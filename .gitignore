@@ -1,0 +1,15 @@
+# Python
+venv/
+__pycache__/
+*.pyc
+.env
+
+# Node.js
+node_modules/
+.eslintcache
+build/
+.env.local
+
+# Database/OS
+.DS_Store
+*.db
