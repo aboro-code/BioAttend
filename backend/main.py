@@ -16,7 +16,6 @@ import time
 import threading
 import uuid
 
-
 app = FastAPI(title="VisionGuard AI Backend")
 
 # --- 1. CONFIGURATION ---
@@ -27,11 +26,9 @@ minio_client = Minio(
     secure=False
 )
 
-# Initialize AI
 face_app = FaceAnalysis(name='buffalo_l', providers=['CUDAExecutionProvider', 'CPUExecutionProvider'])
 face_app.prepare(ctx_id=0, det_size=(640, 640))
 
-# Global states
 camera = None
 camera_lock = threading.Lock()
 stream_active = False
@@ -58,7 +55,7 @@ def force_release_camera():
     global camera, stream_active
     
     with camera_lock:
-        stream_active = False  # Signal streaming to stop
+        stream_active = False
         
         if camera is not None:
             try:
@@ -67,10 +64,8 @@ def force_release_camera():
             except:
                 pass
             
-            # Wait a moment for OS to process
             time.sleep(0.3)
             
-            # Second release attempt (for Windows stubbornness)
             try:
                 camera.release()
                 print("📷 Camera released (attempt 2)")
@@ -78,10 +73,8 @@ def force_release_camera():
                 pass
             
             camera = None
-            
-            # Additional wait for Windows to fully release hardware
             time.sleep(0.5)
-            print("✅ Camera fully released for frontend")
+            print("✅ Camera fully released")
 
 # --- 3. DATA LOADERS ---
 @app.on_event("startup")
@@ -92,7 +85,6 @@ def load_known_faces():
         cur = conn.cursor(cursor_factory=RealDictCursor)
         cur.execute("SELECT name, embedding FROM students")
         rows = cur.fetchall()
-        
         known_faces = []
         for row in rows:
             emb_str = row['embedding']
@@ -103,12 +95,9 @@ def load_known_faces():
             else:
                 embedding = np.array(emb_str).astype(np.float32)
             known_faces.append({"name": row['name'], "embedding": embedding})
-            
-        cur.close()
-        conn.close()
+        cur.close() ; conn.close()
         print(f"✅ Loaded {len(known_faces)} students.")
-    except Exception as e:
-        print(f"❌ Startup Error: {e}")
+    except Exception as e: print(f"❌ Startup Error: {e}")
 
 # --- 4. CORE LOGIC ---
 def log_attendance(student_name):
@@ -121,28 +110,21 @@ def log_attendance(student_name):
         res = cur.fetchone()
         if res:
             student_id = res[0]
-            cur.execute("""
-                SELECT id FROM attendance_logs 
-                WHERE student_id = %s AND log_time::date = %s
-            """, (student_id, today))
+            cur.execute("SELECT id FROM attendance_logs WHERE student_id = %s AND log_time::date = %s", (student_id, today))
             existing = cur.fetchone()
             if existing:
                 cur.execute("UPDATE attendance_logs SET log_time = %s WHERE id = %s", (now, existing[0]))
             else:
                 cur.execute("INSERT INTO attendance_logs (student_id, status, log_time) VALUES (%s, 'Present', %s)", (student_id, now))
             conn.commit()
-        cur.close()
-        conn.close()
-    except Exception as e: 
-        print(f"❌ DB Error: {e}")
+        cur.close() ; conn.close()
+    except Exception as e: print(f"❌ DB Error: {e}")
 
 def gen_frames():
     global camera, stream_active
-    
     with camera_lock:
         if camera is None or not camera.isOpened():
             camera = cv2.VideoCapture(0)
-            # Windows-specific: set buffer size to 1 for faster release
             camera.set(cv2.CAP_PROP_BUFFERSIZE, 1)
         stream_active = True
     
@@ -155,39 +137,28 @@ def gen_frames():
                     break
                 success, frame = camera.read()
             
-            if not success:
-                break
+            if not success: break
             
             faces = face_app.get(frame)
             for face in faces:
                 bbox = face.bbox.astype(int)
                 live_embedding = face.embedding
                 name, max_score = "Unknown", 0.0
-                
                 for known in known_faces:
-                    score = np.dot(live_embedding, known['embedding']) / (
-                        np.linalg.norm(live_embedding) * np.linalg.norm(known['embedding'])
-                    )
+                    score = np.dot(live_embedding, known['embedding']) / (np.linalg.norm(live_embedding) * np.linalg.norm(known['embedding']))
                     if score > 0.45 and score > max_score:
                         max_score, name = score, known['name']
                 
                 color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
                 cv2.rectangle(frame, (bbox[0], bbox[1]), (bbox[2], bbox[3]), color, 2)
                 cv2.putText(frame, f"{name}", (bbox[0], bbox[1]-10), cv2.FONT_HERSHEY_SIMPLEX, 0.5, color, 2)
-                
-                if name != "Unknown": 
-                    log_attendance(name)
+                if name != "Unknown": log_attendance(name)
 
             ret, buffer = cv2.imencode('.jpg', frame)
-            frame_bytes = buffer.tobytes()
-            
-            yield (b'--frame\r\n'
-                   b'Content-Type: image/jpeg\r\n\r\n' + frame_bytes + b'\r\n')
+            yield (b'--frame\r\n' b'Content-Type: image/jpeg\r\n\r\n' + buffer.tobytes() + b'\r\n')
     
-    except GeneratorExit:
-        print("📺 Client disconnected")
-    finally:
-        force_release_camera()
+    except GeneratorExit: print("📺 Client disconnected")
+    finally: force_release_camera()
 
 # --- 5. ENDPOINTS ---
 
@@ -222,9 +193,57 @@ async def get_today_attendance():
         ORDER BY a.log_time DESC
     """)
     res = cur.fetchall()
-    cur.close()
-    conn.close()
+    cur.close() ; conn.close()
     return res
+
+@app.post("/enroll")
+async def enroll_student(data: dict):
+    force_release_camera()
+    time.sleep(0.5)
+    try:
+        name = data.get("name")
+        image_data = data.get("image").split(",")[1]
+        img = cv2.imdecode(np.frombuffer(base64.b64decode(image_data), np.uint8), cv2.IMREAD_COLOR)
+        faces = face_app.get(img)
+        if not faces: return {"success": False, "message": "No face detected"}
+        
+        embedding = faces[0].embedding.tolist()
+        student_id = str(uuid.uuid4())
+        photo_name = f"{student_id}.jpg"
+        
+        _, encoded_img = cv2.imencode('.jpg', img)
+        minio_client.put_object("student-photos", photo_name, io.BytesIO(encoded_img.tobytes()), len(encoded_img.tobytes()), "image/jpeg")
+
+        conn = get_db_connection()
+        cur = conn.cursor()
+        cur.execute("INSERT INTO students (id, name, embedding, photo_url) VALUES (%s, %s, %s, %s)", (student_id, name, json.dumps(embedding), photo_name))
+        conn.commit()
+        cur.close() ; conn.close()
+        
+        load_known_faces()
+        return {"success": True, "message": f"Registered {name}!"}
+    except Exception as e: return {"success": False, "message": str(e)}
+
+@app.delete("/students/{student_id}")
+async def delete_student(student_id: str):
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute("SELECT photo_url FROM students WHERE id = %s", (student_id,))
+        row = cur.fetchone()
+        if not row: return {"success": False, "message": "Student not found"}
+        
+        filename = row['photo_url']
+        cur.execute("DELETE FROM students WHERE id = %s", (student_id,))
+        try:
+            minio_client.remove_object("student-photos", filename)
+        except: pass
+        
+        conn.commit()
+        cur.close() ; conn.close()
+        load_known_faces()
+        return {"success": True, "message": "Student deleted"}
+    except Exception as e: return {"success": False, "message": str(e)}
 
 @app.get("/students")
 async def get_all_students():
@@ -232,8 +251,7 @@ async def get_all_students():
     cur = conn.cursor(cursor_factory=RealDictCursor)
     cur.execute("SELECT id, name, photo_url FROM students ORDER BY name ASC")
     res = cur.fetchall()
-    cur.close()
-    conn.close()
+    cur.close() ; conn.close()
     return res
 
 @app.get("/photo/{photo_name}")
@@ -241,61 +259,8 @@ async def get_student_photo(photo_name: str):
     try:
         response = minio_client.get_object("student-photos", photo_name)
         return Response(content=response.read(), media_type="image/jpeg")
-    except:
-        return {"error": "Photo not found"}
+    except: return Response(status_code=404)
 
-@app.post("/enroll")
-async def enroll_student(data: dict):
-    # Ensure camera is released
-    force_release_camera()
-    
-    # Extra wait for Windows
-    time.sleep(0.5)
-    
-    try:
-        name = data.get("name")
-        image_data = data.get("image").split(",")[1]
-        img_bytes = base64.b64decode(image_data)
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-        
-        faces = face_app.get(img)
-        if not faces:
-            return {"success": False, "message": "No face detected"}
-        
-        embedding = faces[0].embedding.tolist()
-        
-        # Generate UUID for student
-        import uuid
-        student_id = str(uuid.uuid4())
-        
-        photo_name = f"{student_id}.jpg"  # Use UUID as filename for uniqueness
-        
-        # Save to MinIO
-        _, encoded_img = cv2.imencode('.jpg', img)
-        minio_client.put_object(
-            "student-photos", photo_name, 
-            io.BytesIO(encoded_img.tobytes()), len(encoded_img.tobytes()), 
-            "image/jpeg"
-        )
-
-        # Save to DB with ID
-        conn = get_db_connection()
-        cur = conn.cursor()
-        cur.execute(
-            "INSERT INTO students (id, name, embedding, photo_url) VALUES (%s, %s, %s, %s)",
-            (student_id, name, json.dumps(embedding), photo_name)
-        )
-        conn.commit()
-        cur.close()
-        conn.close()
-        
-        load_known_faces()  # Update memory
-        return {"success": True, "message": f"Registered {name}!"}
-    except Exception as e:
-        return {"success": False, "message": str(e)}
-    
-    
 @app.get("/attendance/export")
 async def export_attendance():
     conn = get_db_connection()

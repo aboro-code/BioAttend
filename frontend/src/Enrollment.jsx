@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Webcam from "react-webcam";
 import axios from "axios";
 import toast from "react-hot-toast";
-import { Camera, CheckCircle, RefreshCw } from "lucide-react";
+import { Camera, RefreshCw } from "lucide-react";
 
 const Enrollment = () => {
   const webcamRef = useRef(null);
@@ -11,21 +11,13 @@ const Enrollment = () => {
   const [cameraReady, setCameraReady] = useState(false);
 
   useEffect(() => {
-    // Proactively release backend camera when this component mounts
-    const prepareCamera = async () => {
-      try {
-        await axios.post("http://localhost:8000/camera/release");
-        console.log("✅ Backend camera released for enrollment");
-        // Wait for Windows to fully release
-        await new Promise((resolve) => setTimeout(resolve, 800));
-        setCameraReady(true);
-      } catch (error) {
-        console.error("Camera release error:", error);
-        toast.error("Camera may be in use. Try refreshing.");
-      }
-    };
+    // Add a delay before initializing camera
+    const timer = setTimeout(() => {
+      setCameraReady(true);
+      console.log("✅ Enrollment camera ready");
+    }, 500); // Small delay to ensure backend released
 
-    prepareCamera();
+    return () => clearTimeout(timer);
   }, []);
 
   const handleEnroll = async () => {
@@ -76,15 +68,18 @@ const Enrollment = () => {
               ref={webcamRef}
               screenshotFormat="image/jpeg"
               className="w-full h-full object-cover"
-              onUserMedia={() => console.log("✅ Webcam ready")}
+              onUserMedia={() => console.log("✅ Webcam acquired")}
               onUserMediaError={(err) => {
                 console.error("Webcam error:", err);
-                toast.error("Camera blocked. Click the refresh button.");
+                toast.error("Camera blocked. Please wait and try again.");
               }}
             />
           ) : (
             <div className="w-full h-full flex items-center justify-center text-white">
-              <RefreshCw className="w-8 h-8 animate-spin" />
+              <div className="text-center">
+                <RefreshCw className="w-8 h-8 animate-spin mx-auto mb-2" />
+                <p className="text-sm text-slate-400">Preparing camera...</p>
+              </div>
             </div>
           )}
         </div>

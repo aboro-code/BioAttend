@@ -1,17 +1,35 @@
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
-import { Download, UserCheck, Activity, VideoOff } from "lucide-react";
+import { Download, UserCheck, Activity, VideoOff, Video } from "lucide-react";
 import toast from "react-hot-toast";
 
 const AttendanceTable = () => {
   const [logs, setLogs] = useState([]);
-  const [isCameraActive, setIsCameraActive] = useState(true);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [streamUrl, setStreamUrl] = useState("");
   const prevLogsLength = useRef(0);
   const imgRef = useRef(null);
 
-  useEffect(() => {
+  const startStream = () => {
+    setStreamUrl(`http://localhost:8000/video_feed?t=${Date.now()}`);
     setIsCameraActive(true);
+  };
 
+  const stopStream = async () => {
+    setIsCameraActive(false);
+    setStreamUrl("");
+    if (imgRef.current) {
+      imgRef.current.src = "";
+    }
+    try {
+      await axios.post("http://localhost:8000/camera/release");
+      toast.success("Camera released");
+    } catch (error) {
+      console.error("Camera release error:", error);
+    }
+  };
+
+  useEffect(() => {
     const fetchLogs = async () => {
       try {
         const response = await axios.get(
@@ -42,18 +60,9 @@ const AttendanceTable = () => {
     fetchLogs();
     const interval = setInterval(fetchLogs, 5000);
 
-    // Cleanup on unmount
     return () => {
       clearInterval(interval);
-      setIsCameraActive(false);
-
-      // Force backend to release camera
-      axios.post("http://localhost:8000/camera/release").catch(console.error);
-
-      // Also stop the img stream
-      if (imgRef.current) {
-        imgRef.current.src = "";
-      }
+      stopStream();
     };
   }, []);
 
@@ -69,9 +78,15 @@ const AttendanceTable = () => {
                 Live Monitor
               </span>
             </div>
+            <button
+              onClick={stopStream}
+              className="absolute top-4 right-4 z-10 p-2 bg-red-600/80 hover:bg-red-700 backdrop-blur-md rounded-full transition-all"
+            >
+              <VideoOff className="w-5 h-5 text-white" />
+            </button>
             <img
               ref={imgRef}
-              src="http://localhost:8000/video_feed"
+              src={streamUrl}
               alt="Live AI Feed"
               className="w-full h-full object-cover"
               onError={(e) => {
@@ -83,9 +98,14 @@ const AttendanceTable = () => {
         ) : (
           <div className="text-center p-10">
             <VideoOff className="w-12 h-12 text-slate-700 mx-auto mb-4" />
-            <p className="text-slate-500 font-medium">
-              Camera Released for Enrollment
-            </p>
+            <p className="text-slate-500 font-medium mb-4">Camera Stopped</p>
+            <button
+              onClick={startStream}
+              className="flex items-center gap-2 mx-auto px-6 py-3 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 transition-all"
+            >
+              <Video className="w-5 h-5" />
+              Start Live Monitoring
+            </button>
           </div>
         )}
       </div>
@@ -108,10 +128,10 @@ const AttendanceTable = () => {
         />
         <StatCard
           label="System Status"
-          val="Active"
+          val={isCameraActive ? "Active" : "Stopped"}
           icon={Activity}
-          color="text-indigo-600"
-          bg="bg-indigo-50"
+          color={isCameraActive ? "text-emerald-600" : "text-slate-600"}
+          bg={isCameraActive ? "bg-emerald-50" : "bg-slate-50"}
         />
       </div>
 
