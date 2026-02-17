@@ -1,0 +1,13 @@
+fastapi
+uvicorn
+opencv-python
+numpy
+psycopg2-binary
+python-multipart
+insightface
+onnxruntime-gpu
+minio
+pandas
+openpyxl
+pydantic
+pydantic-settings
