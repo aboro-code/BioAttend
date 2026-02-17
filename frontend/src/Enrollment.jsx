@@ -33,7 +33,7 @@ const Enrollment = () => {
     }
 
     try {
-      const response = await axios.post("http://localhost:8000/enroll", {
+      const response = await axios.post("http://localhost:8000/students/enroll", {
         name: name,
         image: imageSrc,
       });

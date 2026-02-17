@@ -1,17 +1,18 @@
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
-import { Download, UserCheck, Activity, VideoOff, Video } from "lucide-react";
+import { Download, UserCheck, Activity, VideoOff, Video, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 
 const AttendanceTable = () => {
   const [logs, setLogs] = useState([]);
   const [isCameraActive, setIsCameraActive] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
+  const [showExportMenu, setShowExportMenu] = useState(false);
   const prevLogsLength = useRef(0);
   const imgRef = useRef(null);
 
   const startStream = () => {
-    setStreamUrl(`http://localhost:8000/video_feed?t=${Date.now()}`);
+    setStreamUrl(`http://localhost:8000/camera/video_feed?t=${Date.now()}`);
     setIsCameraActive(true);
   };
 
@@ -27,6 +28,13 @@ const AttendanceTable = () => {
     } catch (error) {
       console.error("Camera release error:", error);
     }
+  };
+
+  const handleExport = (format) => {
+    const url = `http://localhost:8000/attendance/export/${format}`;
+    window.open(url, '_blank');
+    setShowExportMenu(false);
+    toast.success(`Downloading ${format.toUpperCase()} report...`);
   };
 
   useEffect(() => {
@@ -136,20 +144,70 @@ const AttendanceTable = () => {
       </div>
 
       {/* TABLE */}
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+      <div className="bg-white rounded-2xl border border-slate-200 shadow-sm ">
         <div className="px-6 py-5 border-b border-slate-100 flex flex-col sm:flex-row justify-between items-center gap-4">
           <h2 className="text-lg font-bold text-slate-800">
             Real-time Activity
           </h2>
-          <button
-            onClick={() =>
-              window.open("http://localhost:8000/attendance/export")
-            }
-            className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200"
-          >
-            <Download className="w-4 h-4" /> Export Report
-          </button>
+          
+          {/* Export Dropdown */}
+          <div className="relative">
+            <button
+              onClick={() => setShowExportMenu(!showExportMenu)}
+              className="flex items-center gap-2 bg-slate-900 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-slate-800 transition-all active:scale-95 shadow-lg shadow-slate-200"
+            >
+              <Download className="w-4 h-4" /> 
+              Export Report
+              <ChevronDown className={`w-4 h-4 transition-transform ${showExportMenu ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {showExportMenu && (
+              <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-2xl border border-slate-200 overflow-hidden z-50">
+                <div className="py-1">
+                  <button
+                    onClick={() => handleExport('csv')}
+                    className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3 group"
+                  >
+                    <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center group-hover:bg-green-200 transition-colors">
+                      <Download className="w-5 h-5 text-green-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-800">CSV Format</p>
+                      <p className="text-xs text-slate-500">Simple spreadsheet</p>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => handleExport('excel')}
+                    className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3 group"
+                  >
+                    <div className="w-10 h-10 bg-blue-100 rounded-lg flex items-center justify-center group-hover:bg-blue-200 transition-colors">
+                      <Download className="w-5 h-5 text-blue-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-800">Excel Format</p>
+                      <p className="text-xs text-slate-500">Formatted with styles</p>
+                    </div>
+                  </button>
+                  
+                  <button
+                    onClick={() => handleExport('excel-detailed')}
+                    className="w-full text-left px-4 py-3 hover:bg-slate-50 transition-colors flex items-center gap-3 group"
+                  >
+                    <div className="w-10 h-10 bg-indigo-100 rounded-lg flex items-center justify-center group-hover:bg-indigo-200 transition-colors">
+                      <Download className="w-5 h-5 text-indigo-600" />
+                    </div>
+                    <div>
+                      <p className="font-semibold text-slate-800">Detailed Report</p>
+                      <p className="text-xs text-slate-500">With statistics</p>
+                    </div>
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
+        
         <div className="overflow-x-auto">
           <table className="w-full text-left">
             <thead>

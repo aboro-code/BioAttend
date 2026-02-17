@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from "react";
 import axios from "axios";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { RefreshCw, Trash2, UserPlus, SearchX } from "lucide-react";
 import toast from "react-hot-toast";
 
 const StudentGallery = () => {
@@ -46,7 +46,7 @@ const StudentGallery = () => {
     const filename = photoUrl.includes("/")
       ? photoUrl.split("/").pop()
       : photoUrl;
-    return `http://localhost:8000/photo/${filename}`;
+    return `http://localhost:8000/students/photo/${filename}`;
   };
 
   return (
@@ -66,9 +66,21 @@ const StudentGallery = () => {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-6">
-        {students.length === 0 && !loading ? (
-          <div className="col-span-full text-center py-10 text-gray-400 font-medium">
-            No students enrolled yet
+        {students.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-20 bg-slate-50 rounded-3xl border-2 border-dashed border-slate-200 animate-in fade-in zoom-in duration-500">
+            <div className="bg-white p-6 rounded-full shadow-xl mb-6">
+              <UserPlus className="w-12 h-12 text-indigo-500" />
+            </div>
+            <h3 className="text-xl font-bold text-slate-800">
+              No Students Enrolled
+            </h3>
+            <p className="text-slate-500 max-w-xs text-center mt-2">
+              Your database is currently empty. Head over to the Enrollment tab
+              to add your first student.
+            </p>
+            <button className="mt-6 px-6 py-2 bg-slate-900 text-white rounded-xl hover:bg-slate-800 transition-all">
+              Go to Enrollment
+            </button>
           </div>
         ) : (
           students.map((student) => (
