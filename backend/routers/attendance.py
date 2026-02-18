@@ -1,7 +1,3 @@
-"""
-Attendance management endpoints
-"""
-
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from typing import List

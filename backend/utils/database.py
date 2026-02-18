@@ -27,8 +27,8 @@ def load_all_students():
 
         cur.close()
         conn.close()
-        print(f"✅ Loaded {len(students)} students from database")
+        print(f"Loaded {len(students)} students from database")
         return students
     except Exception as e:
-        print(f"❌ Database Error: {e}")
+        print(f"Database Error: {e}")
         return []

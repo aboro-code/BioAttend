@@ -1,7 +1,3 @@
-"""
-Camera and video streaming endpoints
-"""
-
 from fastapi import APIRouter
 from fastapi.responses import StreamingResponse
 from datetime import datetime

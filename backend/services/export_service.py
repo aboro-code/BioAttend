@@ -1,7 +1,3 @@
-"""
-Export service for generating reports
-"""
-
 import io
 import pandas as pd
 from datetime import datetime

@@ -1,7 +1,3 @@
-"""
-Student management endpoints
-"""
-
 from fastapi import APIRouter, Response
 from typing import List
 import uuid

@@ -14,7 +14,7 @@ const Enrollment = () => {
     // Add a delay before initializing camera
     const timer = setTimeout(() => {
       setCameraReady(true);
-      console.log("✅ Enrollment camera ready");
+      console.log("Enrollment camera ready");
     }, 500); // Small delay to ensure backend released
 
     return () => clearTimeout(timer);
@@ -68,7 +68,7 @@ const Enrollment = () => {
               ref={webcamRef}
               screenshotFormat="image/jpeg"
               className="w-full h-full object-cover"
-              onUserMedia={() => console.log("✅ Webcam acquired")}
+              onUserMedia={() => console.log("Webcam acquired")}
               onUserMediaError={(err) => {
                 console.error("Webcam error:", err);
                 toast.error("Camera blocked. Please wait and try again.");

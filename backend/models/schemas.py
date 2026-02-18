@@ -1,7 +1,3 @@
-"""
-Pydantic models for request/response validation
-"""
-
 from pydantic import BaseModel
 from typing import Optional
 from datetime import datetime
@@ -9,7 +5,7 @@ from datetime import datetime
 
 class EnrollRequest(BaseModel):
     name: str
-    image: str  # Base64 encoded image
+    image: str
 
 
 class EnrollResponse(BaseModel):

@@ -20,7 +20,7 @@ function App() {
       setCameraReleasing(true);
       try {
         await axios.post("http://localhost:8000/camera/release");
-        console.log("✅ Camera released by App coordinator");
+        console.log("Camera released by App coordinator");
       } catch (error) {
         console.error("Camera release error:", error);
       }
@@ -32,10 +32,6 @@ function App() {
 
     setView(newView);
   };
-
-  useEffect(() => {
-    localStorage.setItem("currentView", view);
-  }, [view]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">

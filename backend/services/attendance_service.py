@@ -1,7 +1,3 @@
-"""
-Attendance logging service
-"""
-
 from datetime import datetime
 from dependencies import get_db_connection
 
