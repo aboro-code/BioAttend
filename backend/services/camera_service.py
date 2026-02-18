@@ -7,30 +7,22 @@ from utils.database import load_all_students  # Import the loader
 
 
 def force_release_camera():
-    """Aggressively release camera with multiple attempts"""
     with dependencies.camera_lock:
         dependencies.stream_active = False
 
         if dependencies.camera is not None:
             try:
                 dependencies.camera.release()
-                print("📷 Camera released (attempt 1)")
+                print("Camera released successfully")
             except Exception as e:
-                print(f"Release error 1: {e}")
+                print(f"Camera release error: {e}")
+            finally:
+                # Ensure the variable is reset even if release() throws an error
+                dependencies.camera = None
 
-            time.sleep(0.3)
-
-            try:
-                # Double check to ensure release
-                if dependencies.camera:
-                    dependencies.camera.release()
-                    print("Camera released (attempt 2)")
-            except Exception as e:
-                print(f"Release error 2: {e}")
-
-            dependencies.camera = None
-            time.sleep(0.5)
-            print("Camera fully released")
+        # A single short sleep is enough to let the OS hardware bus reset
+        time.sleep(0.5)
+        print("Camera system reset")
 
 
 def generate_video_frames():
@@ -73,7 +65,7 @@ def generate_video_frames():
                         * np.linalg.norm(known["embedding"])
                     )
 
-                    if score > 0.35 and score > max_score:
+                    if score > 0.45 and score > max_score:
                         max_score, name = score, known["name"]
 
                 color = (0, 255, 0) if name != "Unknown" else (0, 0, 255)
