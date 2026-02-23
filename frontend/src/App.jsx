@@ -2,36 +2,44 @@ import React, { useState, useEffect } from "react";
 import AttendanceTable from "./AttendanceTable";
 import StudentGallery from "./StudentGallery";
 import Enrollment from "./Enrollment";
-import { Users, ClipboardList, ShieldCheck, UserPlus } from "lucide-react";
+import ProfessorDashboard from "./ProfessorDashboard"; // NEW
+import {
+  Users,
+  ClipboardList,
+  ShieldCheck,
+  UserPlus,
+  GraduationCap,
+} from "lucide-react"; // Added GraduationCap
 import { Toaster } from "react-hot-toast";
 import axios from "axios";
 
 function App() {
   const [view, setView] = useState(() => {
-    return localStorage.getItem("currentView") || "attendance";
+    return localStorage.getItem("currentView") || "professor"; // Changed default
   });
 
   const [cameraReleasing, setCameraReleasing] = useState(false);
 
-  // Handle view changes with camera coordination
   const handleViewChange = async (newView) => {
-    // If switching away from attendance, release camera
     if (view === "attendance" && newView !== "attendance") {
       setCameraReleasing(true);
       try {
         await axios.post("http://localhost:8000/camera/release");
-        console.log("Camera released by App coordinator");
+        console.log("✅ Camera released by App coordinator");
       } catch (error) {
         console.error("Camera release error:", error);
       }
 
-      // Wait for Windows to process
       await new Promise((resolve) => setTimeout(resolve, 1000));
       setCameraReleasing(false);
     }
 
     setView(newView);
   };
+
+  useEffect(() => {
+    localStorage.setItem("currentView", view);
+  }, [view]);
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col font-sans">
@@ -49,6 +57,13 @@ function App() {
           </div>
 
           <nav className="flex gap-2 bg-slate-100 p-1.5 rounded-2xl">
+            <NavBtn
+              active={view === "professor"}
+              onClick={() => handleViewChange("professor")}
+              icon={GraduationCap}
+              label="Professor"
+              disabled={cameraReleasing}
+            />
             <NavBtn
               active={view === "attendance"}
               onClick={() => handleViewChange("attendance")}
@@ -84,6 +99,7 @@ function App() {
           </div>
         ) : (
           <>
+            {view === "professor" && <ProfessorDashboard />}
             {view === "attendance" && <AttendanceTable />}
             {view === "enroll" && <Enrollment />}
             {view === "gallery" && <StudentGallery />}
