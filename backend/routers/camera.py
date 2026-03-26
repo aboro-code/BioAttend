@@ -1,11 +1,16 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 from datetime import datetime
 from services.camera_service import force_release_camera, generate_video_frames
 from models.schemas import CameraStatusResponse
 from dependencies import stream_active, camera
+from auth_dependencies import require_role
 
-router = APIRouter(prefix="/camera", tags=["camera"])
+router = APIRouter(
+    prefix="/camera",
+    tags=["camera"],
+    dependencies=[Depends(require_role("professor"))],
+)
 
 
 @router.get("/video_feed")

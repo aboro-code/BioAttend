@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import QRCode from "react-qr-code";
-import { Clock, Users, MapPin, Wifi, X, RefreshCw } from "lucide-react";
+import API from "./api";
+import { Clock, Users, MapPin, X, RefreshCw, Download } from "lucide-react";
 import toast from "react-hot-toast";
 
 const ProfessorDashboard = () => {
   const [session, setSession] = useState(null);
   const [loading, setLoading] = useState(false);
   const [attendanceRecords, setAttendanceRecords] = useState([]);
-  const [qrToken, setQrToken] = useState(null);
   const [formData, setFormData] = useState({
     course_name: "",
     professor_name: "",
@@ -17,29 +16,8 @@ const ProfessorDashboard = () => {
     classroom_lat: null,
     classroom_lon: null,
     geofence_radius: 50,
-    allowed_wifi_ssid: "",
   });
 
-  // Auto-refresh QR token every 30 seconds
-  useEffect(() => {
-    if (!session) return;
-
-    const fetchQR = async () => {
-      try {
-        const res = await axios.get(
-          `http://localhost:8000/sessions/${session.session_id}/qr-token`,
-        );
-        setQrToken(res.data);
-      } catch (err) {
-        console.error("QR refresh error:", err);
-      }
-    };
-
-    fetchQR();
-    const interval = setInterval(fetchQR, 30000);
-
-    return () => clearInterval(interval);
-  }, [session]);
 
   // Auto-refresh attendance list every 5 seconds
   useEffect(() => {
@@ -47,8 +25,8 @@ const ProfessorDashboard = () => {
 
     const fetchAttendance = async () => {
       try {
-        const res = await axios.get(
-          `http://localhost:8000/sessions/${session.session_id}/details`,
+        const res = await API.get(
+          `/sessions/${session.session_id}/details`,
         );
         setAttendanceRecords(res.data.attendance_records);
       } catch (err) {
@@ -94,8 +72,8 @@ const ProfessorDashboard = () => {
     setLoading(true);
 
     try {
-      const response = await axios.post(
-        "http://localhost:8000/sessions/create",
+      const response = await API.post(
+        "/sessions/create",
         formData,
       );
 
@@ -119,13 +97,12 @@ const ProfessorDashboard = () => {
     if (!window.confirm("Are you sure you want to close this session?")) return;
 
     try {
-      await axios.post(
-        `http://localhost:8000/sessions/${session.session_id}/close`,
+      await API.post(
+        `/sessions/${session.session_id}/close`,
       );
       toast.success("Session closed");
       setSession(null);
       setAttendanceRecords([]);
-      setQrToken(null);
     } catch (error) {
       toast.error("Failed to close session");
     }
@@ -146,6 +123,31 @@ const ProfessorDashboard = () => {
     return `${hours}h ${minutes}m`;
   };
 
+  const downloadFile = async (url, filename) => {
+    try {
+      toast.loading(`Preparing ${filename}...`);
+      const response = await API.get(url, {
+        responseType: "blob",
+      });
+      toast.dismiss();
+
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"],
+      });
+      const link = document.createElement("a");
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success(`${filename} downloaded!`);
+    } catch (error) {
+      toast.dismiss();
+      toast.error("Failed to download file");
+      console.error("Download error:", error);
+    }
+  };
+
   if (session) {
     // Active session view
     return (
@@ -162,13 +164,41 @@ const ProfessorDashboard = () => {
                   Professor: {session.professor_name || formData.professor_name}
                 </p>
               </div>
-              <button
-                onClick={closeSession}
-                className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
-              >
-                <X className="w-4 h-4" />
-                Close Session
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => {
+                    const name = session.course_name || formData.course_name || "attendance";
+                    downloadFile(
+                      `/attendance/export/csv?session_id=${session.session_id}`,
+                      `attendance_${name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.csv`,
+                    );
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  CSV
+                </button>
+                <button
+                  onClick={() => {
+                    const name = session.course_name || formData.course_name || "attendance";
+                    downloadFile(
+                      `/attendance/export/excel?session_id=${session.session_id}`,
+                      `attendance_${name.replace(/\s+/g, '_')}_${new Date().toISOString().slice(0, 10)}.xlsx`,
+                    );
+                  }}
+                  className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+                >
+                  <Download className="w-4 h-4" />
+                  Excel
+                </button>
+                <button
+                  onClick={closeSession}
+                  className="flex items-center gap-2 px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                  Close
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mt-6">
@@ -204,49 +234,12 @@ const ProfessorDashboard = () => {
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* QR Code Section */}
-            <div className="bg-white rounded-2xl shadow-lg p-8">
-              <h2 className="text-xl font-bold text-gray-900 mb-6 text-center">
-                Scan to Mark Attendance
-              </h2>
-
-              {qrToken && (
-                <div className="space-y-6">
-                  <div className="bg-white p-6 rounded-xl border-4 border-indigo-200 flex justify-center">
-                    <QRCode value={qrToken.qr_url} size={280} />
-                  </div>
-
-                  <div className="text-center">
-                    <p className="text-sm text-gray-600 mb-2">
-                      Or enter OTP manually:
-                    </p>
-                    <div className="text-5xl font-bold text-indigo-600 tracking-wider font-mono">
-                      {session.otp}
-                    </div>
-                    <p className="text-xs text-gray-500 mt-2">
-                      QR refreshes every 30 seconds
-                    </p>
-                  </div>
-
-                  {formData.allowed_wifi_ssid && (
-                    <div className="flex items-center gap-2 p-3 bg-blue-50 rounded-lg">
-                      <Wifi className="w-5 h-5 text-blue-600" />
-                      <div>
-                        <p className="text-sm font-medium text-gray-900">
-                          Required WiFi:
-                        </p>
-                        <p className="text-sm text-gray-600">
-                          {formData.allowed_wifi_ssid}
-                        </p>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-
+          <div className="grid-cols-1 lg:grid-cols-2 gap-6">
             {/* Attendance List */}
+            <p className="text-sm text-gray-600 mb-2">Enter OTP</p>
+            <div className="text-5xl font-bold text-indigo-600 tracking-wider font-mono">
+              {session.otp}
+            </div>
             <div className="bg-white rounded-2xl shadow-lg p-6">
               <div className="flex justify-between items-center mb-4">
                 <h2 className="text-xl font-bold text-gray-900">
@@ -453,24 +446,6 @@ const ProfessorDashboard = () => {
                   placeholder="Longitude"
                 />
               </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-2">
-                Required WiFi SSID (Optional)
-              </label>
-              <input
-                type="text"
-                value={formData.allowed_wifi_ssid}
-                onChange={(e) =>
-                  setFormData({
-                    ...formData,
-                    allowed_wifi_ssid: e.target.value,
-                  })
-                }
-                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
-                placeholder="e.g., UNIVERSITY_WIFI"
-              />
             </div>
 
             <button

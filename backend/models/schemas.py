@@ -1,13 +1,7 @@
-"""
-Pydantic models for request/response validation
-"""
-
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, Field, model_validator
 from typing import Optional, Dict, List, Any
 from datetime import datetime
 from uuid import UUID
-
-# ==================== EXISTING MODELS ====================
 
 
 class EnrollRequest(BaseModel):
@@ -43,7 +37,22 @@ class DeleteResponse(BaseModel):
     message: str
 
 
-# ==================== NEW SESSION MODELS ====================
+class LoginRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=100)
+    password: str = Field(..., min_length=3, max_length=200)
+
+
+class LoginResponse(BaseModel):
+    success: bool
+    access_token: str
+    token_type: str = "bearer"
+    role: str
+    username: str
+
+
+class MeResponse(BaseModel):
+    username: str
+    role: str
 
 
 class SessionCreateRequest(BaseModel):
@@ -86,16 +95,12 @@ class SessionCreateResponse(BaseModel):
     success: bool
     message: str
     session_id: Optional[str] = None
+    course_name: Optional[str] = None
+    professor_name: Optional[str] = None
     otp: Optional[str] = None
-    qr_code_url: Optional[str] = None
     expires_at: Optional[datetime] = None
 
 
-class QRTokenResponse(BaseModel):
-    token: str
-    expires_in: int  # seconds
-    qr_url: str
-    generated_at: datetime
 
 
 class LocationVerificationRequest(BaseModel):
@@ -103,7 +108,6 @@ class LocationVerificationRequest(BaseModel):
     latitude: Optional[float] = Field(None, ge=-90, le=90)
     longitude: Optional[float] = Field(None, ge=-180, le=180)
     wifi_ssid: Optional[str] = Field(None, max_length=100)
-    qr_token: Optional[str] = Field(None)
     device_fingerprint: Optional[str] = Field(None, max_length=500)
 
 
@@ -113,8 +117,43 @@ class LocationVerificationResponse(BaseModel):
     total_score: int
     required_score: int
     passed: bool
-    checks: Dict[str, Dict[str, Any]]  # Details of each check
+    checks: Dict[str, Dict[str, Any]]
     session_id: Optional[str] = None
+
+
+class OTPValidationRequest(BaseModel):
+    otp: str = Field(..., min_length=6, max_length=6)
+
+
+class OTPValidationResponse(BaseModel):
+    success: bool
+    message: str
+    session_id: Optional[str] = None
+    course_name: Optional[str] = None
+    professor_name: Optional[str] = None
+    classroom_location: Optional[str] = None
+    expires_at: Optional[datetime] = None
+    geofence_radius: Optional[int] = None
+    requires_liveness: bool = True
+
+
+class ScoreCalculationRequest(BaseModel):
+    session_id: str
+    otp: str = Field(..., min_length=6, max_length=6)
+    latitude: Optional[float] = Field(None, ge=-90, le=90)
+    longitude: Optional[float] = Field(None, ge=-180, le=180)
+    device_fingerprint: Optional[str] = Field(None, max_length=1000)
+    client_meta: Optional[Dict[str, Any]] = None
+
+
+class ScoreCalculationResponse(BaseModel):
+    success: bool
+    message: str
+    total_score: int
+    required_score: int
+    passed: bool
+    breakdown: Dict[str, Dict[str, Any]]
+    policy: Dict[str, bool]
 
 
 class LivenessFrame(BaseModel):
@@ -124,6 +163,8 @@ class LivenessFrame(BaseModel):
 
 
 class LivenessVerificationRequest(BaseModel):
+    session_id: str
+    otp: str = Field(..., min_length=6, max_length=6)
     frames: List[LivenessFrame] = Field(
         ...,
         min_length=30,
@@ -150,7 +191,6 @@ class SecureAttendanceRequest(BaseModel):
     latitude: Optional[float] = None
     longitude: Optional[float] = None
     wifi_ssid: Optional[str] = None
-    qr_token: Optional[str] = None
     device_fingerprint: Optional[str] = None
     liveness_data: Optional[Dict[str, Any]] = None
 

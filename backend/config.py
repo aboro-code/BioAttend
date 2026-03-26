@@ -24,18 +24,12 @@ class Settings(BaseSettings):
 
     # ============= SESSION MANAGEMENT =============
     OTP_LENGTH: int = 6
-    QR_TOKEN_LENGTH: int = 16
-    QR_TOKEN_VALIDITY_SECONDS: int = 30
-    DEFAULT_SESSION_DURATION_HOURS: int = 2
-    MAX_SESSION_DURATION_HOURS: int = 8
     DEFAULT_GEOFENCE_RADIUS_METERS: int = 50
 
     # ============= LOCATION VERIFICATION =============
     # Score-based system (total must be >= 70)
-    SCORE_WIFI_MATCH: int = 30
-    SCORE_GPS_MATCH: int = 40
-    SCORE_QR_VALID: int = 20
-    SCORE_DEVICE_LEGITIMATE: int = 10
+    SCORE_GPS_MATCH: int = 60
+    SCORE_DEVICE_LEGITIMATE: int = 40
     MINIMUM_VERIFICATION_SCORE: int = 70
 
     # ============= LIVENESS DETECTION =============
@@ -79,15 +73,13 @@ def validate_settings():
     ), "Threshold must be between 0 and 1"
     assert settings.MINIMUM_VERIFICATION_SCORE <= 100, "Score cannot exceed 100"
     assert (
-        settings.SCORE_WIFI_MATCH
-        + settings.SCORE_GPS_MATCH
-        + settings.SCORE_QR_VALID
+        settings.SCORE_GPS_MATCH
         + settings.SCORE_DEVICE_LEGITIMATE
     ) >= settings.MINIMUM_VERIFICATION_SCORE, (
         "Maximum possible score must meet minimum requirement"
     )
 
-    print("✅ Configuration validated successfully")
+    print("Configuration validated successfully")
 
 
 # Validate on import

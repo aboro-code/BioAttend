@@ -12,15 +12,19 @@ from dependencies import get_db_connection
 from models.schemas import (
     SessionCreateRequest,
     SessionCreateResponse,
-    QRTokenResponse,
     SessionStatusResponse,
     SessionDetailResponse,
     SessionAttendanceRecord,
 )
 from services.location_service import LocationService
 from config import settings
+from auth_dependencies import require_role
 
-router = APIRouter(prefix="/sessions", tags=["sessions"])
+router = APIRouter(
+    prefix="/sessions",
+    tags=["sessions"],
+    dependencies=[Depends(require_role("professor"))],
+)
 
 
 def generate_otp(length: int = 6) -> str:
@@ -30,36 +34,22 @@ def generate_otp(length: int = 6) -> str:
 
 @router.post("/create", response_model=SessionCreateResponse)
 async def create_attendance_session(request: SessionCreateRequest):
-    """
-    Create a new attendance session
-    Professor endpoint to start attendance collection
-    """
     try:
-        # Generate OTP
         otp = generate_otp(settings.OTP_LENGTH)
-
-        # Calculate expiry
         expires_at = datetime.now() + timedelta(hours=request.duration_hours)
-
-        # Generate initial QR token
-        session_id_temp = f"temp_{datetime.now().timestamp()}"
-        qr_token = LocationService.generate_dynamic_qr_token(session_id_temp)
-
-        # Insert into database
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
 
         cur.execute(
             """
             INSERT INTO attendance_sessions 
-            (otp, qr_token, course_name, professor_name, classroom_location,
+            (otp, course_name, professor_name, classroom_location,
              classroom_lat, classroom_lon, geofence_radius, allowed_wifi_ssid, expires_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
             RETURNING id
         """,
             (
                 otp,
-                qr_token,
                 request.course_name,
                 request.professor_name,
                 request.classroom_location,
@@ -73,87 +63,28 @@ async def create_attendance_session(request: SessionCreateRequest):
 
         session_id = cur.fetchone()["id"]
 
-        # Update with actual QR token using real session_id
-        actual_qr_token = LocationService.generate_dynamic_qr_token(str(session_id))
-        cur.execute(
-            "UPDATE attendance_sessions SET qr_token = %s WHERE id = %s",
-            (actual_qr_token, session_id),
-        )
 
         conn.commit()
         cur.close()
         conn.close()
 
-        # Generate QR code URL
-        qr_code_url = f"{settings.FRONTEND_URL or 'http://localhost:3000'}/mark-attendance?session={session_id}&token={actual_qr_token}"
-
         return SessionCreateResponse(
             success=True,
             message=f"Session created successfully for {request.course_name}",
             session_id=str(session_id),
+            course_name=request.course_name,
+            professor_name=request.professor_name,
             otp=otp,
-            qr_code_url=qr_code_url,
             expires_at=expires_at,
         )
 
     except Exception as e:
-        print(f"❌ Session creation error: {e}")
+        print(f"Session creation error: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to create session: {str(e)}"
         )
 
 
-@router.get("/{session_id}/qr-token", response_model=QRTokenResponse)
-async def get_dynamic_qr_token(session_id: str):
-    """
-    Get current dynamic QR token for session
-    Refreshes every 30 seconds
-    """
-    try:
-        # Verify session exists and is active
-        conn = get_db_connection()
-        cur = conn.cursor(cursor_factory=RealDictCursor)
-
-        cur.execute(
-            """
-            SELECT id, is_active, expires_at
-            FROM attendance_sessions
-            WHERE id = %s
-        """,
-            (session_id,),
-        )
-
-        session = cur.fetchone()
-        cur.close()
-        conn.close()
-
-        if not session:
-            raise HTTPException(status_code=404, detail="Session not found")
-
-        if not session["is_active"]:
-            raise HTTPException(status_code=400, detail="Session is inactive")
-
-        if session["expires_at"] < datetime.now():
-            raise HTTPException(status_code=400, detail="Session has expired")
-
-        # Generate current token
-        token = LocationService.generate_dynamic_qr_token(session_id)
-        qr_url = f"{settings.FRONTEND_URL or 'http://localhost:3000'}/mark-attendance?session={session_id}&token={token}"
-
-        return QRTokenResponse(
-            token=token,
-            expires_in=settings.QR_TOKEN_VALIDITY_SECONDS,
-            qr_url=qr_url,
-            generated_at=datetime.now(),
-        )
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        print(f"❌ QR token generation error: {e}")
-        raise HTTPException(
-            status_code=500, detail=f"Failed to generate QR token: {str(e)}"
-        )
 
 
 @router.get("/{session_id}/status", response_model=SessionStatusResponse)

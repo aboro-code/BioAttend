@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Response
+from fastapi import APIRouter, Depends, Response
 from typing import List
 import uuid
 import json
@@ -15,12 +15,17 @@ from services.face_service import detect_face_from_base64
 from services.camera_service import force_release_camera
 from utils.database import load_all_students
 from psycopg2.extras import RealDictCursor
+from auth_dependencies import require_role
 import time
 
 router = APIRouter(prefix="/students", tags=["students"])
 
 
-@router.get("", response_model=List[StudentResponse])
+@router.get(
+    "",
+    response_model=List[StudentResponse],
+    dependencies=[Depends(require_role("professor"))],
+)
 async def get_all_students():
     """Get all registered students"""
     conn = get_db_connection()
@@ -32,7 +37,11 @@ async def get_all_students():
     return res
 
 
-@router.post("/enroll", response_model=EnrollResponse)
+@router.post(
+    "/enroll",
+    response_model=EnrollResponse,
+    dependencies=[Depends(require_role("professor"))],
+)
 async def enroll_student(data: EnrollRequest):
     """Enroll a new student"""
     global known_faces
@@ -94,7 +103,11 @@ async def enroll_student(data: EnrollRequest):
         return EnrollResponse(success=False, message=str(e))
 
 
-@router.delete("/{student_id}", response_model=DeleteResponse)
+@router.delete(
+    "/{student_id}",
+    response_model=DeleteResponse,
+    dependencies=[Depends(require_role("professor"))],
+)
 async def delete_student(student_id: str):
     """Delete a student"""
     global known_faces

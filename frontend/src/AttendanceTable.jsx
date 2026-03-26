@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
+import API from "./api";
 import { Download, UserCheck, Activity, VideoOff, Video, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -23,25 +24,47 @@ const AttendanceTable = () => {
       imgRef.current.src = "";
     }
     try {
-      await axios.post("http://localhost:8000/camera/release");
+      await API.post("/camera/release");
       toast.success("Camera released");
     } catch (error) {
       console.error("Camera release error:", error);
     }
   };
 
-  const handleExport = (format) => {
-    const url = `http://localhost:8000/attendance/export/${format}`;
-    window.open(url, '_blank');
+  const handleExport = async (format) => {
+    const url = `/attendance/export/${format}`;
+    const filename = `attendance_${format}_${new Date().toISOString().slice(0, 10)}.${format === 'excel' || format === 'excel-detailed' ? 'xlsx' : 'csv'}`;
+    
+    try {
+      toast.loading(`Preparing ${format.toUpperCase()} report...`);
+      const response = await API.get(url, {
+        responseType: "blob",
+      });
+      toast.dismiss();
+
+      const blob = new Blob([response.data], {
+        type: response.headers["content-type"],
+      });
+      const link = document.createElement("a");
+      link.href = window.URL.createObjectURL(blob);
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      toast.success(`${format.toUpperCase()} report downloaded!`);
+    } catch (error) {
+      toast.dismiss();
+      toast.error("Failed to download report");
+      console.error("Export error:", error);
+    }
     setShowExportMenu(false);
-    toast.success(`Downloading ${format.toUpperCase()} report...`);
   };
 
   useEffect(() => {
     const fetchLogs = async () => {
       try {
-        const response = await axios.get(
-          "http://localhost:8000/attendance/today",
+        const response = await API.get(
+          "/attendance/today",
         );
         const newLogs = response.data;
 

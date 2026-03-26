@@ -1,8 +1,3 @@
-"""
-Location verification service
-Handles GPS geofencing, WiFi validation, QR tokens
-"""
-
 import hashlib
 import time
 from math import radians, sin, cos, sqrt, atan2
@@ -105,62 +100,6 @@ class LocationService:
 
         return is_valid, message
 
-    @staticmethod
-    def generate_dynamic_qr_token(
-        session_id: str, timestamp: Optional[int] = None
-    ) -> str:
-        """
-        Generate dynamic QR token that changes every 30 seconds
-
-        Args:
-            session_id: Session UUID
-            timestamp: Unix timestamp (defaults to current time)
-
-        Returns:
-            16-character hex token
-        """
-        if timestamp is None:
-            timestamp = int(time.time())
-
-        # Round to nearest 30-second interval
-        interval = timestamp // settings.QR_TOKEN_VALIDITY_SECONDS
-
-        # Hash session_id + interval + secret
-        token_string = f"{session_id}{interval}{settings.SECRET_KEY}"
-        token_hash = hashlib.sha256(token_string.encode()).hexdigest()
-
-        # Return first 16 characters
-        return token_hash[: settings.QR_TOKEN_LENGTH]
-
-    @staticmethod
-    def validate_qr_token(session_id: str, provided_token: str) -> Tuple[bool, str]:
-        """
-        Validate QR token (checks current and previous interval for grace period)
-
-        Returns:
-            (is_valid, message)
-        """
-        if not provided_token:
-            return False, "QR token not provided"
-
-        current_time = int(time.time())
-
-        # Generate valid tokens (current and previous interval)
-        current_token = LocationService.generate_dynamic_qr_token(
-            session_id, current_time
-        )
-        previous_token = LocationService.generate_dynamic_qr_token(
-            session_id, current_time - settings.QR_TOKEN_VALIDITY_SECONDS
-        )
-
-        is_valid = provided_token in [current_token, previous_token]
-
-        if is_valid:
-            message = "Valid QR token"
-        else:
-            message = f"QR code expired or invalid. Please scan again."
-
-        return is_valid, message
 
     @staticmethod
     def validate_device_fingerprint(fingerprint: Optional[str]) -> Tuple[bool, str]:
@@ -201,8 +140,6 @@ class LocationService:
         session: Dict,
         student_lat: Optional[float],
         student_lon: Optional[float],
-        wifi_ssid: Optional[str],
-        qr_token: Optional[str],
         device_fingerprint: Optional[str],
     ) -> Dict:
         """
@@ -216,7 +153,6 @@ class LocationService:
                 'checks': {
                     'wifi': {'passed': bool, 'score': int, 'message': str},
                     'gps': {...},
-                    'qr': {...},
                     'device': {...}
                 }
             }
@@ -224,18 +160,6 @@ class LocationService:
         checks = {}
         total_score = 0
 
-        # WiFi Check
-        wifi_valid, wifi_msg = LocationService.validate_wifi_ssid(
-            wifi_ssid, session.get("allowed_wifi_ssid")
-        )
-        wifi_score = settings.SCORE_WIFI_MATCH if wifi_valid else 0
-        total_score += wifi_score
-        checks["wifi"] = {
-            "passed": wifi_valid,
-            "score": wifi_score,
-            "max_score": settings.SCORE_WIFI_MATCH,
-            "message": wifi_msg,
-        }
 
         # GPS Geofence Check
         gps_valid, distance, gps_msg = LocationService.validate_geofence(
@@ -255,18 +179,6 @@ class LocationService:
             "message": gps_msg,
         }
 
-        # QR Token Check
-        qr_valid, qr_msg = LocationService.validate_qr_token(
-            session.get("id"), qr_token
-        )
-        qr_score = settings.SCORE_QR_VALID if qr_valid else 0
-        total_score += qr_score
-        checks["qr"] = {
-            "passed": qr_valid,
-            "score": qr_score,
-            "max_score": settings.SCORE_QR_VALID,
-            "message": qr_msg,
-        }
 
         # Device Check
         device_valid, device_msg = LocationService.validate_device_fingerprint(
@@ -287,9 +199,7 @@ class LocationService:
             "total_score": total_score,
             "required_score": settings.MINIMUM_VERIFICATION_SCORE,
             "max_possible_score": (
-                settings.SCORE_WIFI_MATCH
-                + settings.SCORE_GPS_MATCH
-                + settings.SCORE_QR_VALID
+                settings.SCORE_GPS_MATCH
                 + settings.SCORE_DEVICE_LEGITIMATE
             ),
             "passed": passed,

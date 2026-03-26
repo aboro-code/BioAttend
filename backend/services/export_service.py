@@ -7,24 +7,40 @@ from psycopg2.extras import RealDictCursor
 from dependencies import get_db_connection
 
 
-def generate_csv_export():
-    """Generate CSV export"""
+def generate_csv_export(session_id: str = None):
+    """Generate CSV export for a specific session or all logs"""
     conn = get_db_connection()
-    df = pd.read_sql(
+    
+    if session_id:
+        query = """
+            SELECT st.name as "Student Name", 
+                   'Present' as "Status", 
+                   TO_CHAR(sa.marked_at, 'YYYY-MM-DD HH24:MI:SS') as "Timestamp",
+                   sa.verification_method as "Method",
+                   sa.verification_scores->>'total_score' as "Score"
+            FROM session_attendance sa
+            JOIN students st ON sa.student_id = st.id
+            WHERE sa.session_id = %s
+            ORDER BY sa.marked_at DESC;
         """
-        SELECT s.name as "Student Name", 
-               a.status as "Status", 
-               TO_CHAR(a.log_time, 'YYYY-MM-DD HH24:MI:SS') as "Timestamp"
-        FROM attendance_logs a 
-        JOIN students s ON a.student_id = s.id 
-        ORDER BY a.log_time DESC;
-    """,
-        conn,
-    )
+        df = pd.read_sql(query, conn, params=(session_id,))
+    else:
+        df = pd.read_sql(
+            """
+            SELECT s.name as "Student Name", 
+                   a.status as "Status", 
+                   TO_CHAR(a.log_time, 'YYYY-MM-DD HH24:MI:SS') as "Timestamp"
+            FROM attendance_logs a 
+            JOIN students s ON a.student_id = s.id 
+            ORDER BY a.log_time DESC;
+        """,
+            conn,
+        )
     conn.close()
 
     now = datetime.now()
-    filename = f"attendance_{now.strftime('%Y%m%d_%H%M%S')}.csv"
+    prefix = f"session_{session_id[:8]}" if session_id else "attendance"
+    filename = f"{prefix}_{now.strftime('%Y%m%d_%H%M%S')}.csv"
 
     stream = io.StringIO()
     df.to_csv(stream, index=False)
@@ -32,20 +48,39 @@ def generate_csv_export():
     return stream.getvalue(), filename
 
 
-def generate_excel_export():
-    """Generate formatted Excel export"""
+def generate_excel_export(session_id: str = None):
+    """Generate formatted Excel export for a session or all logs"""
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute(
+    
+    if session_id:
+        cur.execute(
+            """
+            SELECT st.name as student_name, 
+                   'Present' as status, 
+                   sa.marked_at as log_time,
+                   sa.verification_method,
+                   sa.verification_scores->>'total_score' as score
+            FROM session_attendance sa
+            JOIN students st ON sa.student_id = st.id
+            WHERE sa.session_id = %s
+            ORDER BY sa.marked_at DESC;
+        """,
+            (session_id,),
+        )
+    else:
+        cur.execute(
+            """
+            SELECT s.name as student_name, 
+                   a.status, 
+                   a.log_time,
+                   NULL as verification_method,
+                   NULL as score
+            FROM attendance_logs a 
+            JOIN students s ON a.student_id = s.id 
+            ORDER BY a.log_time DESC;
         """
-        SELECT s.name as student_name, 
-               a.status, 
-               a.log_time
-        FROM attendance_logs a 
-        JOIN students s ON a.student_id = s.id 
-        ORDER BY a.log_time DESC;
-    """
-    )
+        )
     rows = cur.fetchall()
     cur.close()
     conn.close()
@@ -125,7 +160,8 @@ def generate_excel_export():
     excel_file.seek(0)
 
     now = datetime.now()
-    filename = f"attendance_{now.strftime('%Y%m%d_%H%M%S')}.xlsx"
+    prefix = f"session_{session_id[:8]}" if session_id else "attendance"
+    filename = f"{prefix}_{now.strftime('%Y%m%d_%H%M%S')}.xlsx"
 
     return excel_file, filename
 

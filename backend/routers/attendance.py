@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from typing import List
 from datetime import datetime
@@ -9,18 +9,250 @@ from models.schemas import (
     AttendanceLog,
     LocationVerificationRequest,
     LocationVerificationResponse,
+    OTPValidationRequest,
+    OTPValidationResponse,
+    ScoreCalculationRequest,
+    ScoreCalculationResponse,
+    LivenessVerificationRequest,
+    LivenessVerificationResponse,
     SecureAttendanceRequest,
     SecureAttendanceResponse,
 )
 from services.export_service import generate_csv_export, generate_excel_export
 from services.location_service import LocationService
 from services.face_service import detect_face_from_base64
+from services.liveness_service import LivenessService
+from config import settings
+from auth_dependencies import require_role
 import numpy as np
 
 router = APIRouter(prefix="/attendance", tags=["attendance"])
 
 
-@router.get("/today", response_model=List[AttendanceLog])
+def _match_student_with_pgvector(cur, live_embedding: np.ndarray):
+    """
+    Try pgvector similarity search first. Returns (student_id, student_name, similarity)
+    or (None, None, 0.0) when not found/unsupported.
+    """
+    try:
+        # pgvector cosine distance: smaller is better
+        embedding_str = "[" + ",".join(map(str, live_embedding.tolist())) + "]"
+        cur.execute(
+            """
+            SELECT id, name, 1 - (embedding <=> %s::vector) AS similarity
+            FROM students
+            ORDER BY embedding <=> %s::vector
+            LIMIT 1
+        """,
+            (embedding_str, embedding_str),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None, None, 0.0
+        return row["id"], row["name"], float(row["similarity"] or 0.0)
+    except Exception:
+        # Fallback path is handled by in-memory matching.
+        return None, None, 0.0
+
+
+@router.post(
+    "/validate-otp",
+    response_model=OTPValidationResponse,
+    dependencies=[Depends(require_role("student"))],
+)
+async def validate_otp(request: OTPValidationRequest):
+    """Validate OTP and return active session details for student flow bootstrap."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            """
+            SELECT id, course_name, professor_name, classroom_location, expires_at,
+                   geofence_radius, is_active
+            FROM attendance_sessions
+            WHERE otp = %s
+            ORDER BY created_at DESC
+            LIMIT 1
+        """,
+            (request.otp,),
+        )
+        session = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not session:
+            return OTPValidationResponse(success=False, message="Invalid OTP")
+        if not session["is_active"]:
+            return OTPValidationResponse(success=False, message="Session is inactive")
+        if session["expires_at"] <= datetime.now():
+            return OTPValidationResponse(success=False, message="Session has expired")
+
+        return OTPValidationResponse(
+            success=True,
+            message="OTP validated",
+            session_id=str(session["id"]),
+            course_name=session["course_name"],
+            professor_name=session["professor_name"],
+            classroom_location=session["classroom_location"],
+            expires_at=session["expires_at"],
+            geofence_radius=session["geofence_radius"],
+            requires_liveness=settings.LIVENESS_ENABLED,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"OTP validation failed: {str(e)}")
+
+
+@router.post(
+    "/calculate-score",
+    response_model=ScoreCalculationResponse,
+    dependencies=[Depends(require_role("student"))],
+)
+async def calculate_score(request: ScoreCalculationRequest):
+    """Calculate browser-based verification score (GPS 60 + Device 40)."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            """
+            SELECT id, otp, classroom_lat, classroom_lon, geofence_radius, expires_at, is_active
+            FROM attendance_sessions
+            WHERE id = %s AND otp = %s
+        """,
+            (request.session_id, request.otp),
+        )
+        session = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not session:
+            return ScoreCalculationResponse(
+                success=False,
+                message="Invalid session or OTP",
+                total_score=0,
+                required_score=70,
+                passed=False,
+                breakdown={},
+                policy={"can_proceed_to_liveness": False, "can_proceed_to_face": False},
+            )
+        if not session["is_active"] or session["expires_at"] <= datetime.now():
+            return ScoreCalculationResponse(
+                success=False,
+                message="Session inactive or expired",
+                total_score=0,
+                required_score=70,
+                passed=False,
+                breakdown={},
+                policy={"can_proceed_to_liveness": False, "can_proceed_to_face": False},
+            )
+
+        gps_valid, distance, gps_msg = LocationService.validate_geofence(
+            request.latitude,
+            request.longitude,
+            float(session.get("classroom_lat")),
+            float(session.get("classroom_lon")),
+            float(session.get("geofence_radius", settings.DEFAULT_GEOFENCE_RADIUS_METERS)),
+        )
+        gps_score = 60 if gps_valid else 0
+
+        device_valid, device_msg = LocationService.validate_device_fingerprint(
+            request.device_fingerprint
+        )
+        device_score = 40 if device_valid else 0
+
+        total = gps_score + device_score
+        passed = total >= 70
+        breakdown = {
+            "gps": {
+                "passed": gps_valid,
+                "score": gps_score,
+                "max_score": 60,
+                "distance_meters": distance,
+                "message": gps_msg,
+            },
+            "device": {
+                "passed": device_valid,
+                "score": device_score,
+                "max_score": 40,
+                "message": device_msg,
+                "flags": [] if device_valid else ["suspicious_or_invalid_fingerprint"],
+            },
+        }
+        return ScoreCalculationResponse(
+            success=True,
+            message="Score calculated" if passed else "Score below threshold",
+            total_score=total,
+            required_score=70,
+            passed=passed,
+            breakdown=breakdown,
+            policy={
+                "can_proceed_to_liveness": passed,
+                "can_proceed_to_face": passed and (not settings.LIVENESS_ENABLED),
+            },
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Score calculation failed: {str(e)}")
+
+
+@router.post(
+    "/verify-liveness",
+    response_model=LivenessVerificationResponse,
+    dependencies=[Depends(require_role("student"))],
+)
+async def verify_liveness(request: LivenessVerificationRequest):
+    """Run EAR blink-based liveness verification after score gate passes."""
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+        cur.execute(
+            """
+            SELECT id, otp, classroom_lat, classroom_lon, geofence_radius, expires_at, is_active
+            FROM attendance_sessions
+            WHERE id = %s AND otp = %s
+        """,
+            (request.session_id, request.otp),
+        )
+        session = cur.fetchone()
+        cur.close()
+        conn.close()
+
+        if not session:
+            return LivenessVerificationResponse(
+                success=False,
+                message="Invalid session or OTP",
+                liveness_passed=False,
+                confidence_score=0.0,
+                details={"failure_reason": "invalid_session_or_otp"},
+            )
+        if not session["is_active"] or session["expires_at"] <= datetime.now():
+            return LivenessVerificationResponse(
+                success=False,
+                message="Session inactive or expired",
+                liveness_passed=False,
+                confidence_score=0.0,
+                details={"failure_reason": "inactive_or_expired_session"},
+            )
+
+        result = LivenessService.verify_liveness(
+            [frame.model_dump() for frame in request.frames]
+        )
+        return LivenessVerificationResponse(
+            success=True,
+            message="Liveness verified"
+            if result["liveness_passed"]
+            else "Liveness verification failed",
+            liveness_passed=result["liveness_passed"],
+            confidence_score=result["confidence_score"],
+            details=result["details"],
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Liveness verification failed: {str(e)}")
+
+
+@router.get(
+    "/today",
+    response_model=List[AttendanceLog],
+    dependencies=[Depends(require_role("professor"))],
+)
 async def get_today_attendance():
     """Get today's attendance logs (legacy system)"""
     conn = get_db_connection()
@@ -40,7 +272,11 @@ async def get_today_attendance():
     return res
 
 
-@router.post("/verify-location", response_model=LocationVerificationResponse)
+@router.post(
+    "/verify-location",
+    response_model=LocationVerificationResponse,
+    dependencies=[Depends(require_role("student"))],
+)
 async def verify_location(request: LocationVerificationRequest):
     """
     Step 1: Verify student location before allowing face capture
@@ -81,8 +317,6 @@ async def verify_location(request: LocationVerificationRequest):
             session=session,
             student_lat=request.latitude,
             student_lon=request.longitude,
-            wifi_ssid=request.wifi_ssid,
-            qr_token=request.qr_token,
             device_fingerprint=request.device_fingerprint,
         )
 
@@ -105,7 +339,11 @@ async def verify_location(request: LocationVerificationRequest):
         raise HTTPException(status_code=500, detail=f"Verification failed: {str(e)}")
 
 
-@router.post("/mark-secure", response_model=SecureAttendanceResponse)
+@router.post(
+    "/mark-secure",
+    response_model=SecureAttendanceResponse,
+    dependencies=[Depends(require_role("student"))],
+)
 async def mark_attendance_secure(request: SecureAttendanceRequest):
     """
     Step 2: Mark attendance with full verification
@@ -133,24 +371,64 @@ async def mark_attendance_secure(request: SecureAttendanceRequest):
                 success=False, message="Invalid session or OTP"
             )
 
-        # 2. Verify location (score-based)
-        verification_result = LocationService.calculate_verification_score(
-            session=session,
-            student_lat=request.latitude,
-            student_lon=request.longitude,
-            wifi_ssid=request.wifi_ssid,
-            qr_token=request.qr_token,
-            device_fingerprint=request.device_fingerprint,
+        # 2. Verify required score (GPS 60 + Device 40, threshold 70)
+        gps_valid, distance, gps_msg = LocationService.validate_geofence(
+            request.latitude,
+            request.longitude,
+            float(session.get("classroom_lat")),
+            float(session.get("classroom_lon")),
+            float(session.get("geofence_radius", settings.DEFAULT_GEOFENCE_RADIUS_METERS)),
         )
+        gps_score = 60 if gps_valid else 0
 
-        if not verification_result["passed"]:
+        device_valid, device_msg = LocationService.validate_device_fingerprint(
+            request.device_fingerprint
+        )
+        device_score = 40 if device_valid else 0
+
+        total_score = gps_score + device_score
+        verification_result = {
+            "total_score": total_score,
+            "required_score": 70,
+            "passed": total_score >= 70,
+            "checks": {
+                "gps": {
+                    "passed": gps_valid,
+                    "score": gps_score,
+                    "max_score": 60,
+                    "distance_meters": distance,
+                    "message": gps_msg,
+                },
+                "device": {
+                    "passed": device_valid,
+                    "score": device_score,
+                    "max_score": 40,
+                    "message": device_msg,
+                },
+            },
+        }
+
+        if total_score < 70:
             return SecureAttendanceResponse(
                 success=False,
-                message=f"Location verification failed. Score: {verification_result['total_score']}/{verification_result['required_score']}",
+                message=f"Verification score below threshold. Score: {total_score}/70",
                 verification_summary=verification_result,
             )
 
-        # 3. Face detection and recognition
+        # 3. Liveness gate (if enabled) must pass before embedding matching
+        if settings.LIVENESS_ENABLED:
+            liveness_ok = bool(request.liveness_data and request.liveness_data.get("passed"))
+            if not liveness_ok:
+                return SecureAttendanceResponse(
+                    success=False,
+                    message="Liveness verification required before face matching",
+                    verification_summary={
+                        "location_score": total_score,
+                        "liveness_passed": False,
+                    },
+                )
+
+        # 4. Face detection and recognition
         face_success, embedding, face_error = detect_face_from_base64(request.image)
 
         if not face_success:
@@ -158,52 +436,48 @@ async def mark_attendance_secure(request: SecureAttendanceRequest):
                 success=False, message=face_error or "Face detection failed"
             )
 
-        # 4. Match face with enrolled students
-        if len(known_faces) == 0:
-            return SecureAttendanceResponse(
-                success=False, message="No students enrolled in system"
-            )
-
-        # Convert embedding to numpy array
+        # 5. Match face with enrolled students (pgvector first, fallback in-memory)
         live_embedding = np.array(embedding).astype(np.float32)
-
-        # Find best match
+        student_id = None
         best_match_name = None
         best_similarity = 0.0
 
-        for known_face in known_faces:
-            known_embedding = known_face["embedding"]
+        student_id, best_match_name, best_similarity = _match_student_with_pgvector(
+            cur, live_embedding
+        )
 
-            # Cosine similarity
-            similarity = np.dot(live_embedding, known_embedding) / (
-                np.linalg.norm(live_embedding) * np.linalg.norm(known_embedding)
-            )
-
-            if similarity > best_similarity:
-                best_similarity = similarity
-                best_match_name = known_face["name"]
+        if not student_id:
+            if len(known_faces) == 0:
+                return SecureAttendanceResponse(
+                    success=False, message="No students enrolled in system"
+                )
+            for known_face in known_faces:
+                known_embedding = known_face["embedding"]
+                similarity = np.dot(live_embedding, known_embedding) / (
+                    np.linalg.norm(live_embedding) * np.linalg.norm(known_embedding)
+                )
+                if similarity > best_similarity:
+                    best_similarity = similarity
+                    best_match_name = known_face["name"]
 
         # Check if similarity meets threshold
-        from config import settings
-
         if best_similarity < settings.RECOGNITION_THRESHOLD:
             return SecureAttendanceResponse(
                 success=False,
                 message=f"Face not recognized. Confidence: {best_similarity:.2%}",
             )
 
-        # 5. Get student ID
-        cur.execute("SELECT id FROM students WHERE name = %s", (best_match_name,))
-        student_row = cur.fetchone()
+        # 6. Resolve student id when fallback matching is used
+        if not student_id:
+            cur.execute("SELECT id FROM students WHERE name = %s", (best_match_name,))
+            student_row = cur.fetchone()
+            if not student_row:
+                return SecureAttendanceResponse(
+                    success=False, message="Student not found in database"
+                )
+            student_id = student_row["id"]
 
-        if not student_row:
-            return SecureAttendanceResponse(
-                success=False, message="Student not found in database"
-            )
-
-        student_id = student_row["id"]
-
-        # 6. Check if already marked in this session
+        # 7. Check if already marked in this session
         cur.execute(
             """
             SELECT id FROM session_attendance
@@ -220,7 +494,7 @@ async def mark_attendance_secure(request: SecureAttendanceRequest):
                 message=f"{best_match_name} has already marked attendance for this session",
             )
 
-        # 7. Mark attendance
+        # 8. Mark attendance
         marked_at = datetime.now()
 
         # Prepare data for storage
@@ -232,26 +506,23 @@ async def mark_attendance_secure(request: SecureAttendanceRequest):
         location_data = {
             "latitude": request.latitude,
             "longitude": request.longitude,
-            "wifi_ssid": request.wifi_ssid,
-            "distance_from_classroom": verification_result["checks"]["gps"].get(
+            "distance_from_classroom": verification_result["checks"]["gps"][
                 "distance_meters"
-            ),
+            ],
         }
 
         verification_scores = {
             "total_score": verification_result["total_score"],
             "required_score": verification_result["required_score"],
-            "wifi_score": verification_result["checks"]["wifi"]["score"],
             "gps_score": verification_result["checks"]["gps"]["score"],
-            "qr_score": verification_result["checks"]["qr"]["score"],
             "device_score": verification_result["checks"]["device"]["score"],
         }
 
         # Determine verification method
-        verification_method = "multi-factor"
-        passed_checks = [
-            k for k, v in verification_result["checks"].items() if v["passed"]
-        ]
+        passed_checks = [k for k, v in verification_result["checks"].items() if v["passed"]]
+        if settings.LIVENESS_ENABLED:
+            passed_checks.append("liveness")
+        passed_checks.append("face")
         verification_method = "+".join(passed_checks)
 
         # Insert attendance record
@@ -278,7 +549,7 @@ async def mark_attendance_secure(request: SecureAttendanceRequest):
         cur.close()
         conn.close()
 
-        # 8. Success response
+        # 9. Success response
         return SecureAttendanceResponse(
             success=True,
             message=f"Attendance marked successfully for {best_match_name}",
@@ -305,11 +576,11 @@ async def mark_attendance_secure(request: SecureAttendanceRequest):
         )
 
 
-@router.get("/export/csv")
-async def export_csv():
+@router.get("/export/csv", dependencies=[Depends(require_role("professor"))])
+async def export_csv(session_id: str = None):
     """Export attendance as CSV"""
     try:
-        content, filename = generate_csv_export()
+        content, filename = generate_csv_export(session_id)
         return StreamingResponse(
             iter([content]),
             media_type="text/csv",
@@ -319,11 +590,11 @@ async def export_csv():
         return {"error": str(e)}
 
 
-@router.get("/export/excel")
-async def export_excel():
+@router.get("/export/excel", dependencies=[Depends(require_role("professor"))])
+async def export_excel(session_id: str = None):
     """Export attendance as Excel"""
     try:
-        excel_file, filename = generate_excel_export()
+        excel_file, filename = generate_excel_export(session_id)
         return StreamingResponse(
             excel_file,
             media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -333,7 +604,10 @@ async def export_excel():
         return {"error": str(e)}
 
 
-@router.get("/session/{session_id}/summary")
+@router.get(
+    "/session/{session_id}/summary",
+    dependencies=[Depends(require_role("professor"))],
+)
 async def get_session_attendance_summary(session_id: str):
     """
     Get attendance summary for a specific session
@@ -398,7 +672,6 @@ async def get_session_attendance_summary(session_id: str):
                     "marked_at": record["marked_at"].isoformat(),
                     "verification_method": record["verification_method"],
                     "location_score": scores.get("total_score", 0),
-                    "wifi_ssid": location.get("wifi_ssid"),
                     "distance_meters": location.get("distance_from_classroom"),
                 }
             )
