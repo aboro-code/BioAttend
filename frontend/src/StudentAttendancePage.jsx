@@ -15,6 +15,7 @@ const StudentAttendancePage = () => {
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
 
+  const [email, setEmail] = useState("");
   const [otp, setOtp] = useState("");
   const [session, setSession] = useState(null);
   const [score, setScore] = useState(null);
@@ -40,6 +41,7 @@ const StudentAttendancePage = () => {
   };
 
   const validateOtp = async () => {
+    if (!email.trim() || !email.includes("@")) return toast.error("Enter a valid email address");
     if (otp.trim().length !== 6)
       return toast.error("Enter a valid 6-digit OTP");
     setLoading(true);
@@ -48,6 +50,7 @@ const StudentAttendancePage = () => {
         "http://localhost:8000/attendance/validate-otp",
         {
           otp: otp.trim(),
+          email: email.trim(),
         },
       );
       if (!res.data.success) {
@@ -196,6 +199,7 @@ const StudentAttendancePage = () => {
         {
           session_id: session.session_id,
           otp: otp.trim(),
+          email: email.trim(),
           image: image, // Base64 string
           latitude: geo.coords.latitude,
           longitude: geo.coords.longitude,
@@ -263,6 +267,13 @@ const StudentAttendancePage = () => {
 
         {step === 1 && (
           <div className="w-full flex flex-col items-center space-y-3">
+            <input
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              type="email"
+              className="w-full max-w-sm px-4 py-3 border rounded-xl text-center text-lg"
+              placeholder="student@example.com"
+            />
             <input
               value={otp}
               onChange={(e) => setOtp(e.target.value)}

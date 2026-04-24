@@ -30,7 +30,7 @@ async def get_all_students():
     """Get all registered students"""
     conn = get_db_connection()
     cur = conn.cursor(cursor_factory=RealDictCursor)
-    cur.execute("SELECT id, name, photo_url FROM students ORDER BY name ASC")
+    cur.execute("SELECT id, name, photo_url, email FROM students ORDER BY name ASC")
     res = cur.fetchall()
     cur.close()
     conn.close()
@@ -85,8 +85,8 @@ async def enroll_student(data: EnrollRequest):
         conn = get_db_connection()
         cur = conn.cursor()
         cur.execute(
-            "INSERT INTO students (id, name, embedding, photo_url) VALUES (%s, %s, %s, %s)",
-            (student_id, data.name, json.dumps(embedding), photo_name),
+            "INSERT INTO students (id, name, embedding, photo_url, email) VALUES (%s, %s, %s, %s, %s)",
+            (student_id, data.name, json.dumps(embedding), photo_name, data.email),
         )
         conn.commit()
         cur.close()

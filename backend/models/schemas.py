@@ -6,6 +6,7 @@ from uuid import UUID
 
 class EnrollRequest(BaseModel):
     name: str = Field(..., min_length=1, max_length=100)
+    email: str = Field(..., min_length=5, max_length=255)
     image: str = Field(..., description="Base64 encoded image")
 
 
@@ -19,6 +20,7 @@ class StudentResponse(BaseModel):
     id: str
     name: str
     photo_url: str
+    email: Optional[str] = None
 
 
 class AttendanceLog(BaseModel):
@@ -59,8 +61,8 @@ class SessionCreateRequest(BaseModel):
     course_name: str = Field(
         ..., min_length=1, max_length=200, description="Name of the course"
     )
-    professor_name: str = Field(
-        ..., min_length=1, max_length=100, description="Professor's name"
+    professor_name: Optional[str] = Field(
+        None, max_length=100, description="Professor's name (auto-populated if authenticated)"
     )
     duration_hours: int = Field(
         default=2, ge=1, le=8, description="Session duration in hours"
@@ -123,6 +125,7 @@ class LocationVerificationResponse(BaseModel):
 
 class OTPValidationRequest(BaseModel):
     otp: str = Field(..., min_length=6, max_length=6)
+    email: str = Field(..., min_length=5, max_length=255)
 
 
 class OTPValidationResponse(BaseModel):
@@ -187,6 +190,7 @@ class LivenessVerificationResponse(BaseModel):
 class SecureAttendanceRequest(BaseModel):
     session_id: str
     otp: str = Field(..., min_length=6, max_length=6)
+    email: str = Field(..., min_length=5, max_length=255)
     image: str = Field(..., description="Base64 encoded face image")
     latitude: Optional[float] = None
     longitude: Optional[float] = None
@@ -213,6 +217,7 @@ class SessionStatusResponse(BaseModel):
     seconds_remaining: int
     total_students_marked: int
     classroom_location: Optional[str] = None
+    otp: Optional[str] = None
 
 
 class SessionAttendanceRecord(BaseModel):

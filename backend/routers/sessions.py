@@ -18,7 +18,7 @@ from models.schemas import (
 )
 from services.location_service import LocationService
 from config import settings
-from auth_dependencies import require_role
+from auth_dependencies import require_role, get_current_user
 
 router = APIRouter(
     prefix="/sessions",
@@ -33,12 +33,17 @@ def generate_otp(length: int = 6) -> str:
 
 
 @router.post("/create", response_model=SessionCreateResponse)
-async def create_attendance_session(request: SessionCreateRequest):
+async def create_attendance_session(
+    request: SessionCreateRequest,
+    user: dict = Depends(get_current_user)
+):
     try:
         otp = generate_otp(settings.OTP_LENGTH)
         expires_at = datetime.now() + timedelta(hours=request.duration_hours)
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        professor_name = request.professor_name or user["username"]
 
         cur.execute(
             """
@@ -51,7 +56,7 @@ async def create_attendance_session(request: SessionCreateRequest):
             (
                 otp,
                 request.course_name,
-                request.professor_name,
+                professor_name,
                 request.classroom_location,
                 request.classroom_lat,
                 request.classroom_lon,
@@ -73,7 +78,7 @@ async def create_attendance_session(request: SessionCreateRequest):
             message=f"Session created successfully for {request.course_name}",
             session_id=str(session_id),
             course_name=request.course_name,
-            professor_name=request.professor_name,
+            professor_name=professor_name,
             otp=otp,
             expires_at=expires_at,
         )
@@ -100,6 +105,7 @@ async def get_session_status(session_id: str):
             """
             SELECT 
                 s.id,
+                s.otp,
                 s.course_name,
                 s.professor_name,
                 s.is_active,
@@ -131,6 +137,7 @@ async def get_session_status(session_id: str):
             seconds_remaining=max(0, int(session["seconds_remaining"] or 0)),
             total_students_marked=session["total_students_marked"],
             classroom_location=session["classroom_location"],
+            otp=session.get("otp"),
         )
 
     except HTTPException:
@@ -156,6 +163,7 @@ async def get_session_details(session_id: str):
             """
             SELECT 
                 s.id,
+                s.otp,
                 s.course_name,
                 s.professor_name,
                 s.is_active,
@@ -207,6 +215,7 @@ async def get_session_details(session_id: str):
             seconds_remaining=max(0, int(session["seconds_remaining"] or 0)),
             total_students_marked=session["total_students_marked"],
             classroom_location=session["classroom_location"],
+            otp=session.get("otp"),
         )
 
         attendance_list = [
@@ -288,6 +297,7 @@ async def get_active_sessions():
             """
             SELECT 
                 s.id,
+                s.otp,
                 s.course_name,
                 s.professor_name,
                 s.is_active,
@@ -317,6 +327,7 @@ async def get_active_sessions():
                 seconds_remaining=max(0, int(session["seconds_remaining"] or 0)),
                 total_students_marked=session["total_students_marked"],
                 classroom_location=session["classroom_location"],
+                otp=session.get("otp"),
             )
             for session in sessions
         ]
@@ -325,4 +336,60 @@ async def get_active_sessions():
         print(f"❌ Get active sessions error: {e}")
         raise HTTPException(
             status_code=500, detail=f"Failed to get active sessions: {str(e)}"
+        )
+
+
+@router.get("/mine", response_model=list[SessionStatusResponse])
+async def get_my_sessions(user: dict = Depends(get_current_user)):
+    """
+    Get all sessions created by the currently authenticated professor
+    """
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        cur.execute(
+            """
+            SELECT 
+                s.id,
+                s.otp,
+                s.course_name,
+                s.professor_name,
+                s.is_active,
+                s.expires_at,
+                s.classroom_location,
+                EXTRACT(EPOCH FROM (s.expires_at - NOW())) AS seconds_remaining,
+                COUNT(sa.id) AS total_students_marked
+            FROM attendance_sessions s
+            LEFT JOIN session_attendance sa ON s.id = sa.session_id
+            WHERE s.professor_name = %s
+            GROUP BY s.id
+            ORDER BY s.created_at DESC
+        """,
+            (user["username"],)
+        )
+
+        sessions = cur.fetchall()
+        cur.close()
+        conn.close()
+
+        return [
+            SessionStatusResponse(
+                session_id=str(session["id"]),
+                course_name=session["course_name"],
+                professor_name=session["professor_name"],
+                is_active=session["is_active"],
+                expires_at=session["expires_at"],
+                seconds_remaining=max(0, int(session["seconds_remaining"] or 0)),
+                total_students_marked=session["total_students_marked"],
+                classroom_location=session["classroom_location"],
+                otp=session.get("otp"),
+            )
+            for session in sessions
+        ]
+
+    except Exception as e:
+        print(f"❌ Get my sessions error: {e}")
+        raise HTTPException(
+            status_code=500, detail=f"Failed to get my sessions: {str(e)}"
         )

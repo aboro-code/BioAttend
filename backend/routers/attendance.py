@@ -58,13 +58,24 @@ def _match_student_with_pgvector(cur, live_embedding: np.ndarray):
 @router.post(
     "/validate-otp",
     response_model=OTPValidationResponse,
-    dependencies=[Depends(require_role("student"))],
 )
 async def validate_otp(request: OTPValidationRequest):
     """Validate OTP and return active session details for student flow bootstrap."""
     try:
         conn = get_db_connection()
         cur = conn.cursor(cursor_factory=RealDictCursor)
+
+        # Ensure the student email exists (enrolled in system)
+        cur.execute("SELECT 1 FROM students WHERE email = %s LIMIT 1", (request.email,))
+        student_exists = cur.fetchone()
+        if not student_exists:
+            cur.close()
+            conn.close()
+            return OTPValidationResponse(
+                success=False,
+                message="Email not found in enrolled students",
+            )
+
         cur.execute(
             """
             SELECT id, course_name, professor_name, classroom_location, expires_at,
@@ -105,7 +116,6 @@ async def validate_otp(request: OTPValidationRequest):
 @router.post(
     "/calculate-score",
     response_model=ScoreCalculationResponse,
-    dependencies=[Depends(require_role("student"))],
 )
 async def calculate_score(request: ScoreCalculationRequest):
     """Calculate browser-based verification score (GPS 60 + Device 40)."""
@@ -196,7 +206,6 @@ async def calculate_score(request: ScoreCalculationRequest):
 @router.post(
     "/verify-liveness",
     response_model=LivenessVerificationResponse,
-    dependencies=[Depends(require_role("student"))],
 )
 async def verify_liveness(request: LivenessVerificationRequest):
     """Run EAR blink-based liveness verification after score gate passes."""
@@ -275,7 +284,6 @@ async def get_today_attendance():
 @router.post(
     "/verify-location",
     response_model=LocationVerificationResponse,
-    dependencies=[Depends(require_role("student"))],
 )
 async def verify_location(request: LocationVerificationRequest):
     """
@@ -342,7 +350,6 @@ async def verify_location(request: LocationVerificationRequest):
 @router.post(
     "/mark-secure",
     response_model=SecureAttendanceResponse,
-    dependencies=[Depends(require_role("student"))],
 )
 async def mark_attendance_secure(request: SecureAttendanceRequest):
     """
@@ -436,46 +443,36 @@ async def mark_attendance_secure(request: SecureAttendanceRequest):
                 success=False, message=face_error or "Face detection failed"
             )
 
-        # 5. Match face with enrolled students (pgvector first, fallback in-memory)
+        # 5. Match face against the specific student's registered face
+        cur.execute("SELECT id, name, embedding FROM students WHERE email = %s", (request.email,))
+        student_record = cur.fetchone()
+        
+        if not student_record:
+            return SecureAttendanceResponse(
+                success=False, message="Email not found in database"
+            )
+            
+        student_id = student_record["id"]
+        best_match_name = student_record["name"]
+        
+        student_embedding_raw = student_record["embedding"]
+        if isinstance(student_embedding_raw, str):
+            student_embedding = json.loads(student_embedding_raw)
+        else:
+            student_embedding = student_embedding_raw
+            
         live_embedding = np.array(embedding).astype(np.float32)
-        student_id = None
-        best_match_name = None
-        best_similarity = 0.0
-
-        student_id, best_match_name, best_similarity = _match_student_with_pgvector(
-            cur, live_embedding
+        known_embedding = np.array(student_embedding).astype(np.float32)
+        
+        best_similarity = np.dot(live_embedding, known_embedding) / (
+            np.linalg.norm(live_embedding) * np.linalg.norm(known_embedding)
         )
-
-        if not student_id:
-            if len(known_faces) == 0:
-                return SecureAttendanceResponse(
-                    success=False, message="No students enrolled in system"
-                )
-            for known_face in known_faces:
-                known_embedding = known_face["embedding"]
-                similarity = np.dot(live_embedding, known_embedding) / (
-                    np.linalg.norm(live_embedding) * np.linalg.norm(known_embedding)
-                )
-                if similarity > best_similarity:
-                    best_similarity = similarity
-                    best_match_name = known_face["name"]
-
-        # Check if similarity meets threshold
+        
         if best_similarity < settings.RECOGNITION_THRESHOLD:
             return SecureAttendanceResponse(
                 success=False,
-                message=f"Face not recognized. Confidence: {best_similarity:.2%}",
+                message=f"Face does not match the registered owner of this email. Confidence: {best_similarity:.2%}",
             )
-
-        # 6. Resolve student id when fallback matching is used
-        if not student_id:
-            cur.execute("SELECT id FROM students WHERE name = %s", (best_match_name,))
-            student_row = cur.fetchone()
-            if not student_row:
-                return SecureAttendanceResponse(
-                    success=False, message="Student not found in database"
-                )
-            student_id = student_row["id"]
 
         # 7. Check if already marked in this session
         cur.execute(

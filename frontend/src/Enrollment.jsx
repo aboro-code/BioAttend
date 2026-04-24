@@ -1,12 +1,13 @@
 import React, { useState, useRef, useEffect } from "react";
 import Webcam from "react-webcam";
-import axios from "axios";
+import API from "./api";
 import toast from "react-hot-toast";
 import { Camera, RefreshCw } from "lucide-react";
 
 const Enrollment = () => {
   const webcamRef = useRef(null);
   const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [cameraReady, setCameraReady] = useState(false);
 
@@ -22,6 +23,7 @@ const Enrollment = () => {
 
   const handleEnroll = async () => {
     if (!name.trim()) return toast.error("Please enter a name");
+    if (!email.trim() || !email.includes("@")) return toast.error("Please enter a valid email");
 
     setLoading(true);
     const imageSrc = webcamRef.current?.getScreenshot();
@@ -33,14 +35,16 @@ const Enrollment = () => {
     }
 
     try {
-      const response = await axios.post("http://localhost:8000/students/enroll", {
+      const response = await API.post("/students/enroll", {
         name: name,
+        email: email,
         image: imageSrc,
       });
 
       if (response.data.success) {
         toast.success(response.data.message);
         setName("");
+        setEmail("");
       } else {
         toast.error(response.data.message);
       }
@@ -91,6 +95,13 @@ const Enrollment = () => {
             className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none"
             value={name}
             onChange={(e) => setName(e.target.value)}
+          />
+          <input
+            type="email"
+            placeholder="Student Email Address"
+            className="w-full p-4 bg-slate-50 border-2 border-slate-100 rounded-2xl focus:border-indigo-500 outline-none"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
           />
           <button
             onClick={handleEnroll}

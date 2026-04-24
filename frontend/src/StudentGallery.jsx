@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import axios from "axios";
+import API from "./api";
 import { RefreshCw, Trash2, UserPlus, SearchX } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -10,7 +10,7 @@ const StudentGallery = () => {
   const fetchStudents = async () => {
     setLoading(true);
     try {
-      const res = await axios.get("http://localhost:8000/students");
+      const res = await API.get("/students");
       setStudents(res.data);
     } catch (err) {
       console.error(err);
@@ -24,7 +24,7 @@ const StudentGallery = () => {
     if (!window.confirm(`Are you sure you want to delete ${name}?`)) return;
 
     try {
-      const res = await axios.delete(`http://localhost:8000/students/${id}`);
+      const res = await API.delete(`/students/${id}`);
       if (res.data.success) {
         toast.success(`${name} deleted`);
         setStudents((prev) => prev.filter((s) => s.id !== id));
