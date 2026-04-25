@@ -50,7 +50,8 @@ def generate_video_frames():
                 print("Failed to grab frame")
                 break
 
-            faces = dependencies.face_app.get(frame)
+            face_app = dependencies.get_face_app()
+            faces = face_app.get(frame)
 
             for face in faces:
                 bbox = face.bbox.astype(int)

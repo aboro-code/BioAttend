@@ -3,7 +3,7 @@ import cv2
 import numpy as np
 from typing import Any, Dict, List, Tuple
 from config import settings
-from dependencies import face_app
+from dependencies import get_face_app
 
 class LivenessService:
     """Blink-based liveness checks using eye landmark geometry."""
@@ -77,6 +77,7 @@ class LivenessService:
             if img is None:
                 continue
             
+            face_app = get_face_app()
             faces = face_app.get(img)
             if not faces:
                 continue

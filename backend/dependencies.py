@@ -12,12 +12,22 @@ minio_client = Minio(
     secure=False,
 )
 
-# Face Analysis App
-face_app = FaceAnalysis(
-    name=settings.FACE_MODEL,
-    providers=["CPUExecutionProvider"],  # Force CPU only to avoid GPU library overhead
-)
-face_app.prepare(ctx_id=-1, det_size=settings.DETECTION_SIZE)  # ctx_id=-1 forces CPU
+# Face Analysis App (Initialized as None for Lazy Loading)
+_face_app = None
+face_app_lock = threading.Lock()
+
+def get_face_app():
+    """Lazy loader for FaceAnalysis to save startup memory"""
+    global _face_app
+    with face_app_lock:
+        if _face_app is None:
+            print("Loading Face Analysis Model (buffalo_s)...")
+            _face_app = FaceAnalysis(
+                name="buffalo_s",  # FORCED small model
+                providers=["CPUExecutionProvider"],
+            )
+            _face_app.prepare(ctx_id=-1, det_size=(320, 320))
+        return _face_app
 
 # Camera State
 camera = None

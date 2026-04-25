@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import base64
-from dependencies import face_app
+from dependencies import get_face_app
 
 
 def detect_face_from_base64(image_data: str):
@@ -17,6 +17,7 @@ def detect_face_from_base64(image_data: str):
         img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
         # Detect faces
+        face_app = get_face_app()
         faces = face_app.get(img)
 
         if not faces:
