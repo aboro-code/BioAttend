@@ -1,0 +1,18 @@
+[build]
+  # The directory to change to before starting a build.
+  # This is where your frontend code lives.
+  base = "frontend"
+
+  # The command to run to build your site.
+  command = "npm run build"
+
+  # The directory that contains the deploy-ready HTML files and assets.
+  # This is relative to the 'base' directory above.
+  publish = "dist"
+
+# Single Page Application (SPA) redirect rule.
+# This replaces the need for a separate _redirects file.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
