@@ -28,6 +28,8 @@ known_faces = []
 
 def get_db_connection():
     """Get database connection"""
+    if settings.DATABASE_URL:
+        return psycopg2.connect(settings.DATABASE_URL)
     return psycopg2.connect(
         host=settings.DB_HOST,
         port=settings.DB_PORT,

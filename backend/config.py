@@ -4,6 +4,7 @@ from typing import List, Optional
 
 class Settings(BaseSettings):
     # ============= DATABASE =============
+    DATABASE_URL: Optional[str] = None
     DB_HOST: str = "localhost"
     DB_NAME: str = "face_recognition"
     DB_USER: str = "admin"
@@ -48,7 +49,7 @@ class Settings(BaseSettings):
     # ============= API =============
     CORS_ORIGINS: List[str] = ["*"]
     API_V1_PREFIX: str = "/api/v1"
-    FRONTEND_URL: Optional[str] = "http://localhost:3000"  # NEW
+    FRONTEND_URL: Optional[str] = "*" # Allow all for rapid deployment
 
     # ============= RATE LIMITING =============
     RATE_LIMIT_ENROLLMENT: str = "5/minute"
