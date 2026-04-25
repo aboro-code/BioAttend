@@ -62,7 +62,11 @@ function App() {
         role: res.data.role,
         username: res.data.username,
       };
+      
+      // Update token immediately to avoid race condition with navigation
+      setAuthToken(userAuth.token);
       setAuth(userAuth);
+      
       navigate(res.data.role === "professor" ? "/professor" : "/student");
       toast.success(`Welcome, ${res.data.username}`);
     } catch (error) {
