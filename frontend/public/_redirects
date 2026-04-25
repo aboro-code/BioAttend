@@ -1,0 +1,17 @@
+/* Netlify Redirects for React Router SPA */
+/* Redirect all paths to index.html so React Router can handle them */
+/* See: https://docs.netlify.com/routing/redirects/rewrites-proxies/#history-pushstate-and-single-page-applications */
+
+/* Syntax: [source] [destination] [status] */
+/* This rule tells Netlify: if you don't find a file at the requested path, 
+   serve index.html instead with a 200 (Success) status. */
+
+/* Catch-all rule for SPA */
+/* Netlify processes this from top to bottom. 
+   Files that actually exist (like images/JS/CSS) will still be served first. */
+/* If no file is found, redirect to /index.html */
+/* The ! forces the redirect even if the path doesn't look like a directory */
+
+/* Note: You can also use a _redirects file in the public folder. */
+
+/*  /index.html  200
