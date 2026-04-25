@@ -20,8 +20,8 @@ class Settings(BaseSettings):
 
     # ============= FACE RECOGNITION =============
     RECOGNITION_THRESHOLD: float = 0.45
-    DETECTION_SIZE: tuple = (640, 640)
-    FACE_MODEL: str = "buffalo_l"
+    DETECTION_SIZE: tuple = (320, 320)  # Reduced from 640x640 to save memory
+    FACE_MODEL: str = "buffalo_s"        # Changed from buffalo_l to buffalo_s (Small model for 512MB RAM)
 
     # ============= SESSION MANAGEMENT =============
     OTP_LENGTH: int = 6

@@ -15,9 +15,9 @@ minio_client = Minio(
 # Face Analysis App
 face_app = FaceAnalysis(
     name=settings.FACE_MODEL,
-    providers=["CUDAExecutionProvider", "CPUExecutionProvider"],
+    providers=["CPUExecutionProvider"],  # Force CPU only to avoid GPU library overhead
 )
-face_app.prepare(ctx_id=0, det_size=settings.DETECTION_SIZE)
+face_app.prepare(ctx_id=-1, det_size=settings.DETECTION_SIZE)  # ctx_id=-1 forces CPU
 
 # Camera State
 camera = None
