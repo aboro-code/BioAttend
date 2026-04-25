@@ -63,23 +63,32 @@ async def enroll_student(data: EnrollRequest):
         student_id = str(uuid.uuid4())
         photo_name = f"{student_id}.jpg"
 
-        # Decode and save image to MinIO
-        image_data = data.image.split(",")[1]
-        import base64
-        import numpy as np
+        # Decode and save image to MinIO (if available)
+        photo_name = f"{student_id}.jpg"
+        if minio_client:
+            try:
+                image_data = data.image.split(",")[1]
+                import base64
+                import numpy as np
 
-        img_bytes = base64.b64decode(image_data)
-        nparr = np.frombuffer(img_bytes, np.uint8)
-        img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+                img_bytes = base64.b64decode(image_data)
+                nparr = np.frombuffer(img_bytes, np.uint8)
+                img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
 
-        _, encoded_img = cv2.imencode(".jpg", img)
-        minio_client.put_object(
-            "student-photos",
-            photo_name,
-            io.BytesIO(encoded_img.tobytes()),
-            len(encoded_img.tobytes()),
-            "image/jpeg",
-        )
+                _, encoded_img = cv2.imencode(".jpg", img)
+                minio_client.put_object(
+                    "student-photos",
+                    photo_name,
+                    io.BytesIO(encoded_img.tobytes()),
+                    len(encoded_img.tobytes()),
+                    "image/jpeg",
+                )
+                print(f"✅ Photo saved to MinIO: {photo_name}")
+            except Exception as e:
+                print(f"⚠️ Failed to save photo to MinIO: {e}")
+                photo_name = None # Fallback to no photo
+        else:
+            photo_name = None # No MinIO available
 
         # Save to database
         conn = get_db_connection()
