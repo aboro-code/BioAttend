@@ -1,0 +1,17 @@
+# Same as requirements.txt but CPU ONNX Runtime (fits typical free cloud VMs).
+fastapi
+uvicorn
+opencv-python
+numpy
+psycopg2-binary
+python-multipart
+insightface
+onnxruntime
+minio
+pandas
+openpyxl
+pydantic
+pydantic-settings
+python-jose==3.3.0
+passlib[bcrypt]==1.7.4
+bcrypt==4.0.1

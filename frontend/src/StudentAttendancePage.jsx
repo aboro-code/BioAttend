@@ -1,7 +1,7 @@
 import React, { useMemo, useRef, useState } from "react";
 import Webcam from "react-webcam";
-import axios from "axios";
 import toast from "react-hot-toast";
+import API from "./api";
 
 const steps = [
   "OTP Validation",
@@ -46,12 +46,9 @@ const StudentAttendancePage = () => {
       return toast.error("Enter a valid 6-digit OTP");
     setLoading(true);
     try {
-      const res = await axios.post(
-        "http://localhost:8000/attendance/validate-otp",
-        {
-          otp: otp.trim(),
-          email: email.trim(),
-        },
+      const res = await API.post(
+        "/attendance/validate-otp",
+        { otp: otp.trim(), email: email.trim() },
       );
       if (!res.data.success) {
         toast.error(res.data.message || "OTP validation failed");
@@ -78,20 +75,17 @@ const StudentAttendancePage = () => {
       async (position) => {
         try {
           const deviceFingerprint = buildDeviceFingerprint();
-          const res = await axios.post(
-            "http://localhost:8000/attendance/calculate-score",
-            {
-              session_id: session.session_id,
-              otp: otp.trim(),
-              latitude: position.coords.latitude,
-              longitude: position.coords.longitude,
-              device_fingerprint: deviceFingerprint,
-              client_meta: {
-                accuracy: position.coords.accuracy,
-                timestamp: Date.now(),
-              },
+          const res = await API.post("/attendance/calculate-score", {
+            session_id: session.session_id,
+            otp: otp.trim(),
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+            device_fingerprint: deviceFingerprint,
+            client_meta: {
+              accuracy: position.coords.accuracy,
+              timestamp: Date.now(),
             },
-          );
+          });
           setScore(res.data);
           if (res.data.passed) {
             toast.success(
@@ -149,15 +143,12 @@ const StudentAttendancePage = () => {
         await new Promise((resolve) => setTimeout(resolve, 50)); // ~20fps
       }
 
-      const res = await axios.post(
-        "http://localhost:8000/attendance/verify-liveness",
-        {
-          session_id: session.session_id,
-          otp: otp.trim(),
-          frames: frames, // List of LivenessFrame objects
-          challenges_completed: ["blink"],
-        },
-      );
+      const res = await API.post("/attendance/verify-liveness", {
+        session_id: session.session_id,
+        otp: otp.trim(),
+        frames: frames, // List of LivenessFrame objects
+        challenges_completed: ["blink"],
+      });
 
       setLiveness(res.data);
       if (res.data.liveness_passed) {
@@ -194,23 +185,20 @@ const StudentAttendancePage = () => {
         });
       });
 
-      const res = await axios.post(
-        "http://localhost:8000/attendance/mark-secure",
-        {
-          session_id: session.session_id,
-          otp: otp.trim(),
-          email: email.trim(),
-          image: image, // Base64 string
-          latitude: geo.coords.latitude,
-          longitude: geo.coords.longitude,
-          device_fingerprint: buildDeviceFingerprint(),
-          liveness_data: {
-            passed: !!liveness?.liveness_passed,
-            confidence: liveness?.confidence_score || 0,
-            details: liveness?.details || {},
-          },
+      const res = await API.post("/attendance/mark-secure", {
+        session_id: session.session_id,
+        otp: otp.trim(),
+        email: email.trim(),
+        image: image, // Base64 string
+        latitude: geo.coords.latitude,
+        longitude: geo.coords.longitude,
+        device_fingerprint: buildDeviceFingerprint(),
+        liveness_data: {
+          passed: !!liveness?.liveness_passed,
+          confidence: liveness?.confidence_score || 0,
+          details: liveness?.details || {},
         },
-      );
+      });
 
       setResult(res.data);
       if (res.data.success) {

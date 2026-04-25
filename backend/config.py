@@ -46,7 +46,7 @@ class Settings(BaseSettings):
     ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
 
     # ============= API =============
-    CORS_ORIGINS: List[str] = ["http://localhost:3000", "http://localhost:5173"]
+    CORS_ORIGINS: List[str] = ["*"]
     API_V1_PREFIX: str = "/api/v1"
     FRONTEND_URL: Optional[str] = "http://localhost:3000"  # NEW
 

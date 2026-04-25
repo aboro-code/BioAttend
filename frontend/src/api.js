@@ -1,7 +1,16 @@
 import axios from "axios";
 
+const fromEnv = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+
+// Production build behind nginx: same-origin `/api/...` (see deploy/nginx.conf).
+export const API_BASE_URL = fromEnv
+  ? String(fromEnv).replace(/\/$/, "")
+  : import.meta.env.DEV
+    ? "http://localhost:8000"
+    : "/api";
+
 const API = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: API_BASE_URL,
 });
 
 export const cameraAPI = `${API.defaults.baseURL}/camera`;

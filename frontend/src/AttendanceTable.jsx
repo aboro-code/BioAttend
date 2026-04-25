@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef } from "react";
 import axios from "axios";
-import API from "./api";
+import API, { API_BASE_URL } from "./api";
 import { Download, UserCheck, Activity, VideoOff, Video, ChevronDown } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -13,7 +13,7 @@ const AttendanceTable = () => {
   const imgRef = useRef(null);
 
   const startStream = () => {
-    setStreamUrl(`http://localhost:8000/camera/video_feed?t=${Date.now()}`);
+    setStreamUrl(`${API_BASE_URL}/camera/video_feed?t=${Date.now()}`);
     setIsCameraActive(true);
   };
 

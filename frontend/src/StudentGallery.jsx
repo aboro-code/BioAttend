@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import API from "./api";
+import { API_BASE_URL } from "./api";
 import { RefreshCw, Trash2, UserPlus, SearchX } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -46,7 +47,7 @@ const StudentGallery = () => {
     const filename = photoUrl.includes("/")
       ? photoUrl.split("/").pop()
       : photoUrl;
-    return `http://localhost:8000/students/photo/${filename}`;
+    return `${API_BASE_URL}/students/photo/${filename}`;
   };
 
   return (
