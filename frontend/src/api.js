@@ -2,7 +2,7 @@ import axios from "axios";
 
 const fromEnv = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
 
-// For EC2 Deployment, we point directly to the backend IP on port 8000
+// For EC2 Deployment with ngrok frontend and IP-based backend
 export const API_BASE_URL = "http://16.176.24.242:8000";
 
 const API = axios.create({
