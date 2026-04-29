@@ -12,9 +12,11 @@ FROM nginx:alpine
 COPY --from=build /app/dist /usr/share/nginx/html
 
 # Custom nginx config for SPA routing and API proxying
+# Increased client_max_body_size to allow large liveness frame payloads
 RUN echo 'server { \
     listen 80; \
     server_name bioattend.duckdns.org; \
+    client_max_body_size 50M; \
     location / { \
         root /usr/share/nginx/html; \
         index index.html index.htm; \
@@ -33,6 +35,7 @@ server { \
     server_name bioattend.duckdns.org; \
     ssl_certificate /etc/letsencrypt/live/bioattend.duckdns.org/fullchain.pem; \
     ssl_certificate_key /etc/letsencrypt/live/bioattend.duckdns.org/privkey.pem; \
+    client_max_body_size 50M; \
     location / { \
         root /usr/share/nginx/html; \
         index index.html index.htm; \
