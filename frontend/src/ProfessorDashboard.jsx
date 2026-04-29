@@ -83,7 +83,7 @@ const ProfessorDashboard = () => {
       (position) => {
         toast.dismiss();
         setFormData((prev) => ({
-          ...prev,
+          ...prev,  
           classroom_lat: position.coords.latitude,
           classroom_lon: position.coords.longitude,
         }));

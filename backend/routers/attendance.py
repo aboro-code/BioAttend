@@ -244,14 +244,18 @@ async def verify_liveness(request: LivenessVerificationRequest):
         result = LivenessService.verify_liveness(
             [frame.model_dump() for frame in request.frames]
         )
+        
+        # Defensive check to ensure all required keys are present
+        liveness_passed = result.get("liveness_passed", False)
+        confidence_score = result.get("confidence_score", 0.0)
+        details = result.get("details", {})
+
         return LivenessVerificationResponse(
             success=True,
-            message="Liveness verified"
-            if result["liveness_passed"]
-            else "Liveness verification failed",
-            liveness_passed=result["liveness_passed"],
-            confidence_score=result["confidence_score"],
-            details=result["details"],
+            message="Liveness verified" if liveness_passed else "Liveness verification failed",
+            liveness_passed=liveness_passed,
+            confidence_score=confidence_score,
+            details=details,
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Liveness verification failed: {str(e)}")

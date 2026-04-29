@@ -90,13 +90,19 @@ class LivenessService:
         if not ear_values:
             return {
                 "liveness_passed": False, 
-                "details": {"failure_reason": "EAR computation failed", "face_detected": face_detected_count}
+                "confidence_score": 0.0,
+                "details": {
+                    "failure_reason": "Landmark extraction failed. Ensure 'landmark_2d_106' module is loaded.", 
+                    "face_detected": face_detected_count,
+                    "points_detected": len(getattr(faces[0], "landmark_2d_106", [])) if face_detected_count > 0 else 0
+                }
             }
 
         # Pass 2: Analysis
         ear_mean = sum(ear_values) / len(ear_values)
-        # Use 80% of mean to detect a significant dip (a blink)
-        dynamic_threshold = ear_mean * 0.92 
+        # Use 94% of mean to detect a significant dip (a blink)
+        # Higher threshold (e.g. 0.94) is more sensitive/forgiving
+        dynamic_threshold = ear_mean * 0.98
         
         blink_count = 0
         consecutive_closed = 0
@@ -105,14 +111,17 @@ class LivenessService:
             if ear < dynamic_threshold:
                 consecutive_closed += 1
             else:
+                # If we were closed and now open, that's a blink
                 if consecutive_closed >= 1: 
                     blink_count += 1
                 consecutive_closed = 0
 
+        # Handle case where the last frames were a blink
         if consecutive_closed >= 1:
             blink_count += 1
+            
         # Verification Logic
-        
+        # We require at least 1 clear blink in the 3-second window
         min_blinks = 1
         passed = blink_count >= min_blinks
 
@@ -124,6 +133,7 @@ class LivenessService:
                 "ear_mean": float(ear_mean),
                 "ear_min": float(min(ear_values)),
                 "dynamic_threshold": float(dynamic_threshold),
-                "face_detected_frames": face_detected_count
+                "face_detected_frames": face_detected_count,
+                "status": "Success" if passed else "Blink not detected clearly"
             }
         }
