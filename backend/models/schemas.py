@@ -19,7 +19,7 @@ class EnrollResponse(BaseModel):
 class StudentResponse(BaseModel):
     id: str
     name: str
-    photo_url: str
+    photo_url: Optional[str] = None
     email: Optional[str] = None
 
 

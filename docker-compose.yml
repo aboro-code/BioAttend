@@ -2,6 +2,7 @@ services:
   db:
     image: pgvector/pgvector:pg16
     container_name: face_db
+    restart: always
     ports:
       - "5432:5432"
     environment:
@@ -14,6 +15,7 @@ services:
   minio:
     image: minio/minio
     container_name: face_storage
+    restart: always
     ports:
       - "9000:9000"
       - "9001:9001"
@@ -29,6 +31,7 @@ services:
       context: .
       dockerfile: backend/Dockerfile
     container_name: bio_backend
+    restart: always
     ports:
       - "8000:8000"
     environment:
@@ -46,6 +49,7 @@ services:
       context: .
       dockerfile: frontend/Dockerfile
     container_name: bio_frontend
+    restart: always
     ports:
       - "80:80"
       - "443:443"

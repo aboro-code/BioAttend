@@ -88,13 +88,20 @@ class LivenessService:
                 ear_values.append(ear)
 
         if not ear_values:
+            # Safe way to check landmarks of the first face in the last detected frame
+            points_detected = 0
+            if face_detected_count > 0:
+                # We know at least one face was detected in some frame
+                # Let's just report the failure reason clearly
+                pass
+
             return {
                 "liveness_passed": False, 
                 "confidence_score": 0.0,
                 "details": {
-                    "failure_reason": "Landmark extraction failed. Ensure 'landmark_2d_106' module is loaded.", 
-                    "face_detected": face_detected_count,
-                    "points_detected": len(getattr(faces[0], "landmark_2d_106", [])) if face_detected_count > 0 else 0
+                    "failure_reason": "Blink detection failed: No facial landmarks extracted. Check lighting.", 
+                    "face_detected_frames": face_detected_count,
+                    "points_detected": 0
                 }
             }
 
