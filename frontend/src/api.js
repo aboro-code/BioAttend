@@ -3,7 +3,7 @@ import axios from "axios";
 const fromEnv = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
 
 // For EC2 Deployment with ngrok frontend and IP-based backend
-export const API_BASE_URL = "http://16.176.24.242:8000";
+export const API_BASE_URL = "https://bioattend.duckdns.org/api";
 
 const API = axios.create({
   baseURL: API_BASE_URL,
