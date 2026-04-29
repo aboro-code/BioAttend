@@ -33,31 +33,32 @@ async def startup_event():
     """Load known faces on startup"""
     global known_faces
     known_faces = load_all_students()
-    # Ensure baseline auth users exist (requires app_users migration to be applied)
+    # Ensure baseline auth users exist
     try:
         conn = get_db_connection()
         cur = conn.cursor()
-        cur.execute("SELECT 1 FROM app_users WHERE username = %s", ("professor1",))
-        if not cur.fetchone():
-            cur.execute(
-                """
-                INSERT INTO app_users (username, password_hash, role)
-                VALUES (%s, %s, %s)
-            """,
-                ("professor1", hash_password("prof123"), "professor"),
-            )
-        cur.execute("SELECT 1 FROM app_users WHERE username = %s", ("student1",))
-        if not cur.fetchone():
-            cur.execute(
-                """
-                INSERT INTO app_users (username, password_hash, role)
-                VALUES (%s, %s, %s)
-            """,
-                ("student1", hash_password("stud123"), "student"),
-            )
+        
+        # Reset users to ensure correct hashes
+        cur.execute("DELETE FROM app_users WHERE username IN ('professor1', 'student1')")
+        
+        cur.execute(
+            """
+            INSERT INTO app_users (username, password_hash, role)
+            VALUES (%s, %s, %s)
+        """,
+            ("professor1", hash_password("prof123"), "professor"),
+        )
+        cur.execute(
+            """
+            INSERT INTO app_users (username, password_hash, role)
+            VALUES (%s, %s, %s)
+        """,
+            ("student1", hash_password("stud123"), "student"),
+        )
         conn.commit()
         cur.close()
         conn.close()
+        print("✅ RBAC users reset and seeded successfully")
     except Exception as e:
         print(f"⚠️ RBAC bootstrap skipped: {e}")
     print("BioAttend Backend Started (v2.0.0 - Web Student Flow)")
