@@ -2,12 +2,8 @@ import axios from "axios";
 
 const fromEnv = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
 
-// Production build behind nginx: same-origin `/api/...` (see deploy/nginx.conf).
-export const API_BASE_URL = fromEnv
-  ? String(fromEnv).replace(/\/$/, "")
-  : import.meta.env.DEV
-    ? "http://localhost:8000"
-    : "/api";
+// For EC2 Deployment, we point directly to the backend IP on port 8000
+export const API_BASE_URL = "http://16.176.24.242:8000";
 
 const API = axios.create({
   baseURL: API_BASE_URL,
