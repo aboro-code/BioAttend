@@ -1,8 +1,9 @@
 import axios from "axios";
 
-const fromEnv = import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
+const fromEnv =
+  import.meta.env.VITE_API_BASE_URL || import.meta.env.VITE_API_URL;
 
-// For EC2 Deployment with ngrok frontend and IP-based backend
+// For DuckDNS Deployment with HTTPS
 export const API_BASE_URL = "https://bioattend.duckdns.org/api";
 
 const API = axios.create({

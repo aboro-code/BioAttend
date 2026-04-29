@@ -10,15 +10,42 @@ RUN npm run build
 FROM nginx:alpine
 # Copy the build output to Nginx's html directory
 COPY --from=build /app/dist /usr/share/nginx/html
-# Add a custom nginx config for SPA routing (optional but recommended)
-RUN echo "server { \
+
+# Custom nginx config for SPA routing and API proxying
+RUN echo 'server { \
     listen 80; \
+    server_name bioattend.duckdns.org; \
     location / { \
         root /usr/share/nginx/html; \
         index index.html index.htm; \
-        try_files \$uri \$uri/ /index.html; \
+        try_files $uri $uri/ /index.html; \
     } \
-}" > /etc/nginx/conf.d/default.conf
+    location /api/ { \
+        proxy_pass http://backend:8000/; \
+        proxy_set_header Host $host; \
+        proxy_set_header X-Real-IP $remote_addr; \
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; \
+        proxy_set_header X-Forwarded-Proto $scheme; \
+    } \
+} \
+server { \
+    listen 443 ssl; \
+    server_name bioattend.duckdns.org; \
+    ssl_certificate /etc/letsencrypt/live/bioattend.duckdns.org/fullchain.pem; \
+    ssl_certificate_key /etc/letsencrypt/live/bioattend.duckdns.org/privkey.pem; \
+    location / { \
+        root /usr/share/nginx/html; \
+        index index.html index.htm; \
+        try_files $uri $uri/ /index.html; \
+    } \
+    location /api/ { \
+        proxy_pass http://backend:8000/; \
+        proxy_set_header Host $host; \
+        proxy_set_header X-Real-IP $remote_addr; \
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for; \
+        proxy_set_header X-Forwarded-Proto $scheme; \
+    } \
+}' > /etc/nginx/conf.d/default.conf
 
-EXPOSE 80
+EXPOSE 80 443
 CMD ["nginx", "-g", "daemon off;"]
